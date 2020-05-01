@@ -1,0 +1,3 @@
+module reducedHamiltonian_m
+
+end module reducedHamiltonian_m
