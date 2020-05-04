@@ -8,9 +8,9 @@ LIBS =
 
 EXE = MBAR.x
 
-MODULES = constant_m.mod precision_m.mod snapshot_m.mod simulation_m.mod reducedhamiltonian_m.mod mbar_m.mod
+MODULES = constant_m.mod precision_m.mod io_m.mod snapshot_m.mod simulation_m.mod reducedhamiltonian_m.mod mbar_m.mod
 
-OBJS = precision_m.o constant.o snapshot.o simulation.o reducedHamiltonian.o MBAR.o MBAR_caller.o
+OBJS = precision_m.o constant.o lib.o io.o snapshot.o simulation.o reducedHamiltonian.o MBAR.o MBAR_caller.o
 
 all:	${EXE}
 
