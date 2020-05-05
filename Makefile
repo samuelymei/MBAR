@@ -4,7 +4,8 @@
 FC = ifort
 FFLAGS = -CB
 INCLUDE = 
-LIBS = 
+MKL_HOME=/home/ymei/softwares/intel/mkl
+LIBS = -L$(MKL_HOME)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lm
 
 EXE = MBAR.x
 

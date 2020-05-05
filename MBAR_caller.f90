@@ -31,6 +31,9 @@ program MBAR_caller
           &  totalNumSnapshots,& 
           &  simulatedReducedHamiltonian(IndexW)%ownSimulation%nSnapshots)
   end do
+  do IndexW = 1, nSimulations
+    call simulatedReducedHamiltonian(IndexW)%processTrajectories
+  end do
 
   allocate(reducedEnergies(totalNumSnapshots,nSimulations))
   allocate(nSnapshotsInSimulation(nSimulations))
@@ -43,7 +46,8 @@ program MBAR_caller
     end do
     nSnapshotsInSimulation(IndexW) = simulatedReducedHamiltonian(IndexW)%nOwnSnapshots
   end do
-  call MBAR(10000,1.D-7,nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies)
+  write(66,*)reducedEnergies
+  call MBAR(50,1.D-7,nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies)
   do IndexW = 1, nSimulations
     simulatedReducedHamiltonian(IndexW)%freeEnergy = freeEnergies(IndexW)
   end do  
@@ -60,6 +64,7 @@ program MBAR_caller
   end do
   targetReducedEnergies = targetReducedHamiltonian%reducedEnergies
   call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,targetReducedEnergies,weights)
+
   call deleteSimulationInfo()
   deallocate(simulatedReducedHamiltonian)
   deallocate(reducedEnergies)
