@@ -50,23 +50,29 @@ module reducedHamiltonian_m
       allocate(this%weights(this%TotalNumSnapshots))
     end subroutine init
 
-    subroutine processTrajectories(this)
+    subroutine processTrajectories(this,coordonly)
       implicit none
       class(reducedHamiltonian_t) :: this
+      logical, intent(in), optional :: coordonly
+      logical :: crdonly=.false.
       integer(kind=4) :: indexW, indexS
       integer(kind=4) :: jndexS
       if(idebug == 1) write(*,*) 'Entering reducedHamiltonian%processTrajectories'
+
+      if(present(coordonly))crdonly=coordonly
       jndexS = 0
       do indexW = 1, nSimulations
         do indexS = 1, simulations(indexW)%nSnapshots
           jndexS = jndexS + 1
           this%snapshots(jndexS)%coordinate = &
                & simulations(indexW)%snapshots(indexS)%coordinate
-          this%reducedEnergies(jndexS) = &
-               & simulations(indexW)%snapshots(indexS)%energyUnbiased &
-               & + 0.5*this%ownSimulation%restraintStrength &
-               & * (this%snapshots(jndexS)%coordinate - this%ownSimulation%restraintCenter)**2
-          this%reducedEnergies(jndexS) = this%reducedEnergies(jndexS) * this%beta
+          if(.not.crdonly)then
+            this%reducedEnergies(jndexS) = &
+                 & simulations(indexW)%snapshots(indexS)%energyUnbiased &
+                 & + 0.5*this%ownSimulation%restraintStrength &
+                 & * (this%snapshots(jndexS)%coordinate - this%ownSimulation%restraintCenter)**2
+            this%reducedEnergies(jndexS) = this%reducedEnergies(jndexS) * this%beta
+          end if
         end do
       end do
     end subroutine processTrajectories

@@ -16,9 +16,19 @@ program MBAR_caller
   real(kind=fp_kind), allocatable :: targetReducedEnergies(:)
   real(kind=fp_kind), allocatable :: weights(:)
 
-  integer(kind=4) :: IndexW, IndexS
+  integer(kind=4) :: nbins
+  real(kind=fp_kind) :: binmin,binmax,binwidth
+  real(kind=fp_kind), allocatable :: bincenters(:)
+  real(kind=fp_kind), allocatable :: pmf(:)
+
+  integer(kind=4) :: IndexW, IndexS, IndexB
   integer(kind=4) :: JndexS
+
   nSimulations = 73
+  nbins = 35
+  binmin = 1.5d0
+  binmax =5.0d0
+  binwidth = (binmax - binmin)/nbins
 
   open(id_meta_file,file= 'meta.dat')
   call readSimulationInfo()
@@ -54,6 +64,7 @@ program MBAR_caller
 
   call targetReducedHamiltonian%init(targetBeta,totalNumSnapshots,0)
   jndexS = 0
+  call targetReducedHamiltonian%processTrajectories(coordonly=.true.)
   do indexW = 1, nSimulations
     do indexS = 1, simulations(indexW)%nSnapshots
       jndexS = jndexS + 1
@@ -64,7 +75,24 @@ program MBAR_caller
   end do
   targetReducedEnergies = targetReducedHamiltonian%reducedEnergies
   call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,targetReducedEnergies,weights)
+  targetReducedHamiltonian%weights(:)=weights(:)
 
+  allocate(bincenters(nbins))
+  allocate(pmf(nbins))
+  do IndexB = 1, nbins
+    bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
+  end do 
+  pmf = 0.d0
+  do IndexS = 1, totalNumSnapshots
+    IndexB = int(( targetReducedHamiltonian%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
+    if(IndexB > nbins .or. IndexB < 1) cycle
+    pmf(IndexB) = pmf(IndexB) + targetReducedHamiltonian%weights(IndexS)
+  end do
+  pmf = -log(pmf) / targetReducedHamiltonian%beta
+  pmf = pmf - pmf(1)
+  do IndexB = 1, nbins
+    write(90,*)bincenters(IndexB),pmf(IndexB)
+  end do
   call deleteSimulationInfo()
   deallocate(simulatedReducedHamiltonian)
   deallocate(reducedEnergies)
@@ -72,4 +100,6 @@ program MBAR_caller
   deallocate(freeEnergies)
   deallocate(targetReducedEnergies)
   deallocate(weights)
+  deallocate(bincenters)
+  deallocate(pmf)
 end program MBAR_caller
