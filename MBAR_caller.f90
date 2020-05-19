@@ -20,6 +20,9 @@ program MBAR_caller
   real(kind=fp_kind) :: binmin,binmax,binwidth
   real(kind=fp_kind), allocatable :: bincenters(:)
   real(kind=fp_kind), allocatable :: pmf(:)
+  real(kind=fp_kind), allocatable :: reweighting_entropy(:)
+  integer(kind=4), allocatable :: nSnapshotsInBin(:)
+  real(kind=fp_kind), allocatable :: sumOfWeightsInBin(:)
 
   integer(kind=4) :: IndexW, IndexS, IndexB
   integer(kind=4) :: JndexS
@@ -79,19 +82,34 @@ program MBAR_caller
 
   allocate(bincenters(nbins))
   allocate(pmf(nbins))
+  allocate(reweighting_entropy(nbins))
+  allocate(nSnapshotsInBin(nbins))
+  allocate(sumOfWeightsInBin(nbins))
   do IndexB = 1, nbins
     bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
   end do 
   pmf = 0.d0
+  reweighting_entropy = 0.d0
+  nSnapshotsInBin = 0 
+  sumOfWeightsInBin = 0.d0
   do IndexS = 1, totalNumSnapshots
     IndexB = int(( targetReducedHamiltonian%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
     if(IndexB > nbins .or. IndexB < 1) cycle
     pmf(IndexB) = pmf(IndexB) + targetReducedHamiltonian%weights(IndexS)
+    reweighting_entropy(IndexB) = reweighting_entropy(IndexB) + &
+      targetReducedHamiltonian%weights(IndexS)*log(targetReducedHamiltonian%weights(IndexS))
+    nSnapshotsInBin(IndexB) = nSnapshotsInBin(IndexB) + 1
+    sumOfWeightsInBin(IndexB) = sumOfWeightsInBin(IndexB) + &
+      targetReducedHamiltonian%weights(IndexS)
   end do
+  write(987,'(G12.5,I6)')(sumOfWeightsInBin(IndexB),nSnapshotsInBin(IndexB),&
+     IndexB = 1, nbins)
   pmf = -log(pmf) / targetReducedHamiltonian%beta
   pmf = pmf - pmf(1)
+  reweighting_entropy(:) = -(reweighting_entropy(:)/sumOfWeightsInBin(:)-log(sumOfWeightsInBin(:)))/log(dble(nSnapshotsInBin(:)))
+!  reweighting_entropy(:) = -reweighting_entropy(:)/log(dble(nSnapshotsInBin(:)))
   do IndexB = 1, nbins
-    write(90,*)bincenters(IndexB),pmf(IndexB)
+    write(90,*)bincenters(IndexB), pmf(IndexB), reweighting_entropy(IndexB)
   end do
   call deleteSimulationInfo()
   deallocate(simulatedReducedHamiltonian)
@@ -102,4 +120,7 @@ program MBAR_caller
   deallocate(weights)
   deallocate(bincenters)
   deallocate(pmf)
+  deallocate(reweighting_entropy)
+  deallocate(nSnapshotsInBin)
+  deallocate(sumOfWeightsInBin)
 end program MBAR_caller
