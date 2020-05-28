@@ -13,12 +13,14 @@ module reducedHamiltonian_m
     type (snapshot_t), allocatable :: snapshots(:)
     real(kind=fp_kind), allocatable :: reducedEnergies(:)
     real(kind=fp_kind), allocatable :: weights(:)
+    real(kind=fp_kind), allocatable :: weightsSE(:)
     real(kind=fp_kind) :: freeEnergy
     type (simulation_t), pointer :: ownSimulation 
     contains
       procedure :: destroy
       procedure :: init
       procedure :: processTrajectories
+      procedure :: bootstrap
   end type reducedHamiltonian_t
 
   ! type (reducedHamiltonian_t), allocatable, public :: simulatedReducedHamiltonian(:)
@@ -48,6 +50,7 @@ module reducedHamiltonian_m
       allocate(this%snapshots(this%TotalNumSnapshots))
       allocate(this%reducedEnergies(this%TotalNumSnapshots))
       allocate(this%weights(this%TotalNumSnapshots))
+      allocate(this%weightsSE(this%TotalNumSnapshots))
     end subroutine init
 
     subroutine processTrajectories(this,coordonly)
@@ -83,5 +86,83 @@ module reducedHamiltonian_m
       if(allocated(this%snapshots))deallocate(this%snapshots)
       if(allocated(this%reducedEnergies))deallocate(this%reducedEnergies)
       if(allocated(this%weights))deallocate(this%weights)
+      if(allocated(this%weightsSE))deallocate(this%weightsSE)
     end subroutine destroy
+
+    subroutine bootstrap(this,nresamples,nbins,binmin,binwidth,pmf,pmfSE)
+      use random_m
+      implicit none
+      class (reducedHamiltonian_t) :: this
+      integer(kind=4), intent(in) :: nresamples
+      integer(kind=4), intent(in) :: nbins
+      real(kind=fp_kind), intent(in) :: binmin, binwidth
+      real(kind=fp_kind), intent(out) :: pmf(nbins), pmfSE(nbins)
+ 
+      real(kind=fp_kind), allocatable :: accumulatedWeights(:)
+      real(kind=fp_kind), allocatable :: pmfResampled(:,:)
+      real(kind=fp_kind), allocatable :: weightsResampled(:,:)
+      integer(kind=4), allocatable :: idBinOrigin(:)
+      integer(kind=4), allocatable :: idBinResampled(:,:)
+
+      real(kind=fp_kind) :: rand
+      integer(kind=4) :: irand
+
+      real(kind=fp_kind), allocatable :: bincenters(:)
+
+      integer(kind=4) :: IndexB, IndexS, IndexR
+      integer(kind=4) :: JndexS
+
+      allocate(accumulatedWeights(this%TotalNumSnapshots))
+      allocate(idBinOrigin(this%TotalNumSnapshots))
+      allocate(bincenters(nbins))
+      allocate(idBinResampled(this%TotalNumSnapshots,nresamples))
+      allocate(weightsResampled(this%TotalNumSnapshots,nresamples))
+      allocate(pmfResampled(nbins,nresamples))
+
+      accumulatedWeights(1) = this%weights(1)
+      do IndexS = 2, this%TotalNumSnapshots
+        accumulatedWeights(IndexS) = accumulatedWeights(IndexS-1) + this%weights(IndexS)
+      end do
+      accumulatedWeights(this%TotalNumSnapshots) = 1.d0
+
+      do IndexB = 1, nbins
+        bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
+      end do 
+      do IndexS = 1, this%TotalNumSnapshots
+        idBinOrigin(IndexS) = int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
+      end do
+
+      pmfResampled = 0.d0
+      do IndexR = 1, nresamples
+        do IndexS = 1, this%TotalNumSnapshots
+          rand = MyUniformRand()
+          irand = rand*this%TotalNumSnapshots + 1
+          do JndexS = 1, this%TotalNumSnapshots
+            if(accumulatedWeights(JndexS) >= rand)exit
+          end do
+!          idBinResampled(IndexS,IndexR)=idBinOrigin(JndexS)
+!          weightsResampled(IndexS,IndexR)=this%weights(JndexS)
+          idBinResampled(IndexS,IndexR)=idBinOrigin(irand)
+          weightsResampled(IndexS,IndexR)=this%weights(irand)
+          if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) .le. nbins)then
+            pmfResampled(idBinResampled(IndexS,IndexR),IndexR) = pmfResampled(idBinResampled(IndexS,IndexR),IndexR) + &
+               weightsResampled(IndexS,IndexR)
+          end if
+        end do
+      end do
+      pmfResampled = -log(pmfResampled)/this%beta
+      do IndexB = 1, nbins
+        pmf(IndexB) = sum(pmfResampled(IndexB,:))/nresamples
+        pmfSE(IndexB) = sqrt(sum((pmfResampled(IndexB,:)-pmf(IndexB))**2)/nresamples)
+      end do
+      pmf = pmf - pmf(1)
+
+      deallocate(accumulatedWeights)
+      deallocate(idBinOrigin)
+      deallocate(bincenters)
+      deallocate(idBinResampled)
+      deallocate(weightsResampled)
+      deallocate(pmfResampled)
+    end subroutine bootstrap
+
 end module reducedHamiltonian_m

@@ -37,7 +37,7 @@ contains
       simulations(indexW)%beta = 1.d0 / ( kB * simulationTemperature )
       write(6,'(A,I3,A,F10.6,A,I10,A,A)') ' Simulation ', indexW, ':    beta = ', simulations(indexW)%beta, &
          & ', Number of snapshots:', simulations(indexW)%nSnapshots, &
-         & ', Data file: ', dataFile
+         & ', Data file: ', trim(dataFile)
       allocate(simulations(indexW)%snapshots(simulations(indexW)%nSnapshots))
       open(id_data_file, file=dataFile, status = 'old')
       do indexS = 1, simulations(indexW)%nSnapshots
