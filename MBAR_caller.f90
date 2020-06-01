@@ -31,13 +31,27 @@ program MBAR_caller
   integer(kind=4) :: IndexW, IndexS, IndexB
   integer(kind=4) :: JndexS
 
-  nSimulations = 73
-  nbins = 35
-  binmin = 1.5d0
-  binmax =5.0d0
+  character(len=80) :: metaFile
+  character(len=80) :: targetHamiltonianEnergyFile
+
+  write(6,'(1X,A)')'Number of simulations:'
+  read*,nSimulations
+  write(6,'(1X,A)')'Name of the meta file:'
+  read*,metaFile
+  write(6,'(1X,A)')'Number of bins for output:'
+  read*,nbins
+  write(6,'(1X,A)')'Minimum and maximum of the bins:'
+  read*,binmin,binmax
+  write(6,'(1X,A)')'Name of the file containing the energies of the target Hamiltonian:'
+  read*,targetHamiltonianEnergyFile
+!  nSimulations = 73
+!  nbins = 35
+!  binmin = 1.5d0
+!  binmax = 5.0d0
+!  targetHamiltonianEnergyFile = 'pm6_ascii_6h2o_energy.out'
   binwidth = (binmax - binmin)/nbins
 
-  open(id_meta_file,file= 'meta.dat')
+  open(id_meta_file,file= trim(metaFile))
   call readSimulationInfo()
   write(6,'(1X,A,I,A,I)')'Number of simulations:', nSimulations, ' Total Number of snapshots:', totalNumSnapshots
   close(id_meta_file)
@@ -88,15 +102,18 @@ program MBAR_caller
 
   call targetReducedHamiltonian%init(targetBeta,totalNumSnapshots,0)
   call targetReducedHamiltonian%processTrajectories(coordonly=.true.)
-  jndexS = 0
-  do indexW = 1, nSimulations
-    do indexS = 1, simulations(indexW)%nSnapshots
-      jndexS = jndexS + 1
-      targetReducedHamiltonian%reducedEnergies(jndexS) = &
-            & simulations(indexW)%snapshots(indexS)%energyUnbiased * &
-            & targetReducedHamiltonian%beta
-    end do
-  end do
+  open(id_target_file, file=trim(targetHamiltonianEnergyFile))
+  call targetReducedHamiltonian%readInEnergy(id_target_file)
+  close(id_target_file)
+!  jndexS = 0
+!  do indexW = 1, nSimulations
+!    do indexS = 1, simulations(indexW)%nSnapshots
+!      jndexS = jndexS + 1
+!      targetReducedHamiltonian%reducedEnergies(jndexS) = &
+!            & simulations(indexW)%snapshots(indexS)%energyUnbiased * &
+!            & targetReducedHamiltonian%beta
+!    end do
+!  end do
   targetReducedEnergies = targetReducedHamiltonian%reducedEnergies
   call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,targetReducedEnergies,weights,targetReducedHamiltonian%freeenergy)
   targetReducedHamiltonian%weights(:)=weights(:,1)

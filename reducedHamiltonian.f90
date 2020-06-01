@@ -8,7 +8,7 @@ module reducedHamiltonian_m
   private
   type :: reducedHamiltonian_t
     real(kind=fp_kind) :: beta
-    integer(kind=4) :: TotalNumSnapshots
+    integer(kind=4) :: totalNumSnapshots
     integer(kind=4) :: nOwnSnapshots
     type (snapshot_t), allocatable :: snapshots(:)
     real(kind=fp_kind), allocatable :: reducedEnergies(:)
@@ -20,6 +20,7 @@ module reducedHamiltonian_m
       procedure :: destroy
       procedure :: init
       procedure :: processTrajectories
+      procedure :: readInEnergy
       procedure :: bootstrap
   end type reducedHamiltonian_t
 
@@ -80,6 +81,20 @@ module reducedHamiltonian_m
       end do
     end subroutine processTrajectories
 
+    subroutine readInEnergy(this,fileid)
+      implicit none
+      class (reducedHamiltonian_t) :: this
+      integer(kind=4), intent(in) :: fileid
+      real(kind=fp_kind) :: avgEner
+      integer(kind=4) :: IndexS
+      do IndexS = 1, this%totalNumSnapshots
+        read(fileid,*) this%reducedEnergies(IndexS)
+        this%reducedEnergies(IndexS) = this%reducedEnergies(IndexS) * this%beta
+      end do
+      avgEner = sum(this%reducedEnergies(:))/totalNumSnapshots
+      this%reducedEnergies(:) = this%reducedEnergies(:) - avgEner
+    end subroutine readInEnergy
+
     subroutine destroy(this)
       class(reducedHamiltonian_t) :: this
       if(idebug == 1) write(*,*) 'Entering reducedHamiltonian%destroy'
@@ -134,6 +149,7 @@ module reducedHamiltonian_m
 
       pmfResampled = 0.d0
       do IndexR = 1, nresamples
+        write(6,'(1X,A,I)')'Bootstrapping cycle:',IndexR
         do IndexS = 1, this%TotalNumSnapshots
           rand = MyUniformRand()
           irand = rand*this%TotalNumSnapshots + 1
