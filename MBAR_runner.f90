@@ -33,6 +33,8 @@ program MBAR_caller
 
   character(len=80) :: metaFile
   character(len=80) :: targetHamiltonianEnergyFile
+  character(len=80) :: targetHamiltonianPmfFile
+  character(len=80) :: targetWeightsFile
 
   write(6,'(1X,A)')'Number of simulations:'
   read*,nSimulations
@@ -44,6 +46,10 @@ program MBAR_caller
   read*,binmin,binmax
   write(6,'(1X,A)')'Name of the file containing the energies of the target Hamiltonian:'
   read*,targetHamiltonianEnergyFile
+  write(6,'(1X,A)')'Name of the out file containing the PMF of the target Hamiltonian:'
+  read*,targetHamiltonianPmfFile
+  write(6,'(1X,A)')'Name of the out file containing the weights of the target Hamiltonian:'
+  read*, targetWeightsFile
 !  nSimulations = 73
 !  nbins = 35
 !  binmin = 1.5d0
@@ -78,7 +84,8 @@ program MBAR_caller
   end do
   allocate(weights(totalNumSnapshots,nSimulations))
   allocate(theta(nSimulations,nSimulations))
-  call MBAR(50,1.D-7,nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,weights,theta,'NRM')
+  call MBAR(50,1.D-7,nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies, &
+             & weights,theta,'NRM')
   do IndexW = 1, nSimulations
     simulatedReducedHamiltonian(IndexW)%freeEnergy = freeEnergies(IndexW)
   end do  
@@ -96,15 +103,16 @@ program MBAR_caller
 
 !  do IndexW = 1, nSimulations
 !    targetReducedEnergies(:) = simulatedReducedHamiltonian(IndexW)%reducedEnergies(:)
-!    call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,targetReducedEnergies,simulatedReducedHamiltonian(IndexW)%freeenergy,weights)
+!    call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies, &
+!            & targetReducedEnergies,simulatedReducedHamiltonian(IndexW)%freeenergy,weights)
 !    simulatedReducedHamiltonian(IndexW)%weights(:)=weights(:,1)
 !  end do
 
   call targetReducedHamiltonian%init(targetBeta,totalNumSnapshots,0)
   call targetReducedHamiltonian%processTrajectories(coordonly=.true.)
-  open(id_target_file, file=trim(targetHamiltonianEnergyFile))
-  call targetReducedHamiltonian%readInEnergy(id_target_file)
-  close(id_target_file)
+  open(id_target_energy_file, file=trim(targetHamiltonianEnergyFile))
+  call targetReducedHamiltonian%readInEnergy(id_target_energy_file)
+  close(id_target_energy_file)
 !  jndexS = 0
 !  do indexW = 1, nSimulations
 !    do indexS = 1, simulations(indexW)%nSnapshots
@@ -115,8 +123,13 @@ program MBAR_caller
 !    end do
 !  end do
   targetReducedEnergies = targetReducedHamiltonian%reducedEnergies
-  call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,targetReducedEnergies,weights,targetReducedHamiltonian%freeenergy)
+  call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies, &
+           & targetReducedEnergies,weights,targetReducedHamiltonian%freeenergy)
   targetReducedHamiltonian%weights(:)=weights(:,1)
+  open(id_target_weights_file,file=targetWeightsFile)
+  write(id_target_weights_file,'(I,E12.5,1X,F10.5)')(IndexS, targetReducedHamiltonian%weights(IndexS), &
+        &  targetReducedHamiltonian%snapshots(IndexS)%coordinate, IndexS = 1, totalNumSnapshots)
+  close(id_target_weights_file)
 
 !  extWeights(1:totalNumSnapshots,nSimulations+1)=weights(1:totalNumSnapshots,1)
 !  allocate(extNSnapshotsInSimulation(nSimulations+1))
@@ -165,15 +178,17 @@ program MBAR_caller
 !  write(987,'(G12.5,I6)')(sumOfWeightsInBin(IndexB),nSnapshotsInBin(IndexB), IndexB = 1, nbins)
   pmf = -log(pmf) / targetReducedHamiltonian%beta
 !  pmfSE = sqrt(pmfSE) * exp(pmf)
-  pmf = pmf - pmf(1)
-  reweighting_entropy(:) = -(reweighting_entropy(:)/sumOfWeightsInBin(:)-log(sumOfWeightsInBin(:)))/log(dble(nSnapshotsInBin(:)))
+  pmf = pmf - minval(pmf)
+  reweighting_entropy(:) = -(reweighting_entropy(:)/sumOfWeightsInBin(:)-log(sumOfWeightsInBin(:))) &
+       & /log(dble(nSnapshotsInBin(:)))
 !  reweighting_entropy(:) = -reweighting_entropy(:)/log(dble(nSnapshotsInBin(:)))
 
   call targetReducedHamiltonian%bootstrap(100,nbins,binmin,binwidth,pmf,pmfSE)
+  open(id_target_pmf_file , file = targetHamiltonianPmfFile)
   do IndexB = 1, nbins
-    write(90,'(F8.3,3F9.3)')bincenters(IndexB), pmf(IndexB), pmfSE(IndexB), reweighting_entropy(IndexB)
+    write(id_target_pmf_file,'(F8.3,3F9.3)')bincenters(IndexB), pmf(IndexB), pmfSE(IndexB), reweighting_entropy(IndexB)
   end do
-
+  close(id_target_pmf_file)
   call deleteSimulationInfo()
   deallocate(simulatedReducedHamiltonian)
   deallocate(reducedEnergies)

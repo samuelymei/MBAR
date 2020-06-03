@@ -39,7 +39,7 @@ contains
          & ', Number of snapshots:', simulations(indexW)%nSnapshots, &
          & ', Data file: ', trim(dataFile)
       allocate(simulations(indexW)%snapshots(simulations(indexW)%nSnapshots))
-      open(id_data_file, file=dataFile, status = 'old')
+      open(id_data_file, file = dataFile, status = 'old')
       do indexS = 1, simulations(indexW)%nSnapshots
         read(id_data_file,*) itmp, simulations(indexW)%snapshots(indexS)%coordinate, &
                  & simulations(indexW)%snapshots(indexS)%energyUnbiased

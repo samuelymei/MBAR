@@ -156,22 +156,27 @@ module reducedHamiltonian_m
           do JndexS = 1, this%TotalNumSnapshots
             if(accumulatedWeights(JndexS) >= rand)exit
           end do
-!          idBinResampled(IndexS,IndexR)=idBinOrigin(JndexS)
-!          weightsResampled(IndexS,IndexR)=this%weights(JndexS)
           idBinResampled(IndexS,IndexR)=idBinOrigin(irand)
           weightsResampled(IndexS,IndexR)=this%weights(irand)
-          if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) .le. nbins)then
-            pmfResampled(idBinResampled(IndexS,IndexR),IndexR) = pmfResampled(idBinResampled(IndexS,IndexR),IndexR) + &
-               weightsResampled(IndexS,IndexR)
+        end do
+        weightsResampled(:,IndexR) = weightsResampled(:,IndexR) / sum(weightsResampled(:,IndexR))
+        do IndexS = 1, this%TotalNumSnapshots
+          if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) <= nbins)then
+            pmfResampled(idBinResampled(IndexS,IndexR),IndexR) = & 
+               & pmfResampled(idBinResampled(IndexS,IndexR),IndexR) + weightsResampled(IndexS,IndexR)
+               
           end if
         end do
       end do
       pmfResampled = -log(pmfResampled)/this%beta
+      do IndexR = 1, nresamples
+        pmfResampled(:,IndexR) = pmfResampled(:,IndexR) - minval(pmfResampled(:,IndexR))
+      end do
       do IndexB = 1, nbins
         pmf(IndexB) = sum(pmfResampled(IndexB,:))/nresamples
         pmfSE(IndexB) = sqrt(sum((pmfResampled(IndexB,:)-pmf(IndexB))**2)/nresamples)
       end do
-      pmf = pmf - pmf(1)
+      pmf = pmf - minval(pmf)
 
       deallocate(accumulatedWeights)
       deallocate(idBinOrigin)

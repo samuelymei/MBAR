@@ -8,7 +8,8 @@ module MBAR_m
   implicit none
   
   contains
-    subroutine MBAR(maxIteration,criterion,nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,weights,theta,solver)
+    subroutine MBAR(maxIteration,criterion,nSimulations,totalNumSnapshots,reducedEnergies, &
+         & nSnapshotsInSimulation,freeEnergies,weights,theta,solver)
       integer(kind=4), intent(in) :: maxIteration 
       real(kind=fp_kind), intent(in) :: criterion
       integer(kind=4), intent(in) :: nSimulations
@@ -83,7 +84,8 @@ module MBAR_m
           denominator = 0.d0
           do JndexS = 1, totalNumSnapshots
             do IndexW = 1, nSimulations
-              numerator(JndexS,IndexW) = expShiftedReducedEnergies(JndexS,IndexW)/oldExpFreeEnergies(IndexW)
+              numerator(JndexS,IndexW) = expShiftedReducedEnergies(JndexS,IndexW) &
+                  & /oldExpFreeEnergies(IndexW)
             end do
             do KndexW = 1, nSimulations
               denominator(JndexS) = denominator(JndexS) + &
@@ -103,7 +105,8 @@ module MBAR_m
             end do
           end do
   
-          if(Iteration==0)write(*,'(1X,A,I6,A,G12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', sum(abs(residual))
+          if(Iteration==0)write(*,'(1X,A,I6,A,G12.5)')'Iteration: ', Iteration, & 
+               & ', sum of |residual|: ', sum(abs(residual))
  
           Iteration = Iteration + 1
  
@@ -132,7 +135,8 @@ module MBAR_m
           freeEnergies = oldFreeEnergies - deltaFreeEnergies
           freeEnergies = freeEnergies - freeEnergies(1)
           freeEnergyRmsd = rmsd(nSimulations,oldFreeEnergies,freeEnergies)
-          write(*,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', sum(abs(residual)), ', RMSD of free energy: ', freeEnergyRmsd
+          write(*,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', &
+                & sum(abs(residual)), ', RMSD of free energy: ', freeEnergyRmsd
          ! if(freeEnergyRmsd<criterion)exit
           if(maxval(abs((freeEnergies(2:)-oldFreeEnergies(2:))/oldFreeEnergies(2:)))<criterion)exit
         end do
@@ -175,8 +179,10 @@ module MBAR_m
           freeEnergies = freeEnergies - freeEnergies(1)
           freeEnergyRmsd = rmsd(nSimulations,oldFreeEnergies,freeEnergies)
           maxRelativeDelta = maxval(abs((freeEnergies(2:)-oldFreeEnergies(2:))/oldFreeEnergies(2:)))
-!          write(77,'(3F12.6)')(freeEnergies(IndexW),oldFreeEnergies(IndexW),abs((freeEnergies(IndexW)-oldFreeEnergies(IndexW))/oldFreeEnergies(IndexW)),IndexW=1,nSimulations)
-          write(*,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', RMSD of free energy: ', freeEnergyRmsd, ' Max relative delta: ', maxRelativeDelta
+!          write(77,'(3F12.6)')(freeEnergies(IndexW),oldFreeEnergies(IndexW),abs((freeEnergies(IndexW)& 
+!              & -oldFreeEnergies(IndexW))/oldFreeEnergies(IndexW)),IndexW=1,nSimulations)
+          write(*,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', RMSD of free energy: ', & 
+             & freeEnergyRmsd, ' Max relative delta: ', maxRelativeDelta
          ! if(freeEnergyRmsd<criterion)exit
           if(iteration>1.and.maxRelativeDelta<criterion)then
             write(6,'(A)')'Convergence criterion met'
@@ -222,7 +228,8 @@ module MBAR_m
       if(allocated(denominator))deallocate(denominator)
     end subroutine MBAR
   
-    subroutine MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies,targetReducedEnergies,weights,freeenergy)
+    subroutine MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation, &
+         & freeEnergies,targetReducedEnergies,weights,freeenergy)
       implicit none
       integer(kind=4), intent(in) :: nSimulations
       integer(kind=4), intent(in) :: totalNumSnapshots
@@ -242,7 +249,8 @@ module MBAR_m
         numerator = exp(-targetReducedEnergies(JndexS))
         denominator = 0.d0
         do JndexW = 1, nSimulations
-          denominator = denominator + nSnapshotsInSimulation(JndexW)*exp(-(reducedEnergies(JndexS,JndexW)-freeEnergies(JndexW)))
+          denominator = denominator + &
+            & nSnapshotsInSimulation(JndexW)*exp(-(reducedEnergies(JndexS,JndexW)-freeEnergies(JndexW)))
         end do
         weights(JndexS) = numerator/denominator
       end do
