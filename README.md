@@ -1,5 +1,4 @@
-# MBAR
-Multistate Bennett Acceptance Ratio
+# MBAR (Multistate Bennett Acceptance Ratio)
 
 ## Control options are read from the std input
 
