@@ -14,8 +14,8 @@ module reducedHamiltonian_m
     real(kind=fp_kind), allocatable :: reducedEnergies(:)
     real(kind=fp_kind), allocatable :: weights(:)
     real(kind=fp_kind), allocatable :: weightsSE(:)
-    real(kind=fp_kind) :: freeEnergy
-    type (simulation_t), pointer :: ownSimulation 
+    real(kind=fp_kind) :: freeEnergy, freeEnergySD2
+    type (simulation_t), pointer :: ownSimulation =>Null()
     contains
       procedure :: destroy
       procedure :: init
@@ -150,6 +150,7 @@ module reducedHamiltonian_m
       pmfResampled = 0.d0
       do IndexR = 1, nresamples
         write(6,'(1X,A,I)')'Bootstrapping cycle:',IndexR
+        call flush(6)
         do IndexS = 1, this%TotalNumSnapshots
           rand = MyUniformRand()
           irand = rand*this%TotalNumSnapshots + 1

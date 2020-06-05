@@ -116,29 +116,32 @@ end do
 end subroutine uppercase
 
 subroutine cross_product3(v1,v2,v3)
-implicit none
-real(kind=8),intent(in)::v1(3),v2(3)
-real(kind=8),intent(out)::v3(3)
-integer(kind=4)::i,j,k,m,n
-v3(1)=v1(2)*v2(3)-v1(3)*v2(2)
-v3(2)=v1(3)*v2(1)-v1(1)*v2(3)
-v3(3)=v1(1)*v2(2)-v1(2)*v2(1)
+  use precision_m
+  implicit none
+  real(kind=fp_kind),intent(in)::v1(3),v2(3)
+  real(kind=fp_kind),intent(out)::v3(3)
+  integer(kind=4)::i,j,k,m,n
+  v3(1)=v1(2)*v2(3)-v1(3)*v2(2)
+  v3(2)=v1(3)*v2(1)-v1(1)*v2(3)
+  v3(3)=v1(1)*v2(2)-v1(2)*v2(1)
 end subroutine cross_product3
 
 function triple_product3(v1,v2,v3)
-implicit none
-real(kind=8),intent(in)::v1(3),v2(3),v3(3)
-real(kind=8)::triple_product3
-real(kind=8)::v4(3)
-call cross_product3(v2,v3,v4)
-triple_product3=dot_product(v1,v4)
+  use precision_m
+  implicit none
+  real(kind=fp_kind),intent(in)::v1(3),v2(3),v3(3)
+  real(kind=fp_kind)::triple_product3
+  real(kind=fp_kind)::v4(3)
+  call cross_product3(v2,v3,v4)
+  triple_product3=dot_product(v1,v4)
 end function triple_product3
 
 subroutine normalize(v)
-implicit none
-real(kind=8),intent(in out)::v(3)
-real(kind=8)::norm
-norm=sqrt(dot_product(v,v))
-v=v/norm
+  use precision_m
+  implicit none
+  real(kind=fp_kind),intent(in out)::v(3)
+  real(kind=fp_kind)::norm
+  norm=sqrt(dot_product(v,v))
+  v=v/norm
 end subroutine normalize
 

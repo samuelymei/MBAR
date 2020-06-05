@@ -213,8 +213,7 @@ module MBAR_m
         weights(:,IndexW) = weights(:,IndexW)/sum(weights(:,IndexW))
       end do
 
-      theta = 0.d0
-      call weight2theta(totalNumSnapshots,nSimulations,nSnapshotsInSimulation,weights,theta)
+      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations,nSnapshotsInSimulation,weights,theta)
 
       if(allocated(oldFreeEnergies))deallocate(oldFreeEnergies)
       if(allocated(shiftedReducedEnergies))deallocate(shiftedReducedEnergies)
@@ -350,7 +349,7 @@ module MBAR_m
       deallocate(work)
     end subroutine squareMatrixInv2
 
-    subroutine weight2theta(N,K,nvec,weights,theta)
+    subroutine ComputCovMatFromWeights(N,K,nvec,weights,theta)
       implicit none
       integer(kind=4), intent(in) :: N, K
       integer(kind=4), intent(in) :: nvec(K)
@@ -375,21 +374,25 @@ module MBAR_m
 
       integer(kind=4) :: indexN, indexK
 
+      
+
       lwork = 10*N
       allocate(w(N,K))
       allocate(work(lwork))
+     
+      w = weights
+
       allocate(sigma(N))
       allocate(u(N,K))
       allocate(vt(K,K))
-     
-      w = weights
+
       call dgesvd('S','S',N,K,w,N,sigma,u,N,vt,K,work,lwork,info)
       if(allocated(w))deallocate(w)
       if(info < 0)then
-        write(*,*)'dgesvd weight failed with info=',info
+        write(*,*)'dgesvd of weight matrix failed with info=',info
         stop
       else if(info > 0) then
-        write(*,*)'dgesvd weight failed with info=',info
+        write(*,*)'dgesvd of weight matrix failed with info=',info
         stop
       else
         allocate(sigmaKK(K,K))
@@ -398,30 +401,36 @@ module MBAR_m
         allocate(tmp(K,K))
         v=transpose(vt)
 
-        theta = 0.d0
         sigmaKK = 0.d0
         do indexK = 1, K
           sigmaKK(indexK,indexK) = sigma(indexK)
         end do
 
+        ! theta = v*sigma_K
+        theta = 0.d0
         call dgemm('N','N',K,K,K,1.0d0,v,K,sigmaKK,K,0.d0,theta,K)
+
         nmat = 0.d0
         do indexK = 1, K
           nmat(indexK,indexK) = dble(nvec(indexK))
         end do
 
         svtnvs=0.d0
-        call dgemm('N','N',K,K,K,1.0d0,sigmaKK,K,vt,K,0.d0,tmp,K) 
-        svtnvs=tmp
 
+        tmp = 0.d0
+        call dgemm('N','N',K,K,K,1.0d0,sigmaKK,K,vt,K,0.d0,tmp,K) 
+        svtnvs = tmp
+        tmp = 0.d0
         call dgemm('N','N',K,K,K,1.0d0,svtnvs,K,nmat,K,0.d0,tmp,K) 
-        svtnvs=tmp
+        svtnvs = tmp
+        tmp = 0.d0
         call dgemm('N','N',K,K,K,1.0d0,svtnvs,K,v,K,0.d0,tmp,K)    
-        svtnvs=tmp
+        svtnvs = tmp
+        tmp = 0.d0
         call dgemm('N','N',K,K,K,1.0d0,svtnvs,K,sigmaKK,K,0.d0,tmp,K)    
-        svtnvs=-tmp
+        svtnvs = -tmp
         do indexK = 1, K
-          svtnvs(indexK,indexK)=svtnvs(indexK,indexK)+1.0d0
+          svtnvs(indexK,indexK) = svtnvs(indexK,indexK) + 1.0d0
         end do
         if(allocated(work))deallocate(work)
 
@@ -430,46 +439,51 @@ module MBAR_m
         allocate(sigma2(K))
         allocate(u2(K,K))
         allocate(vt2(K,K))
-        call dgesvd('N','N',K,K,svtnvs,K,sigma2,u2,K,vt2,K,work,lwork,info)
+        call dgesvd('A','A',K,K,svtnvs,K,sigma2,u2,K,vt2,K,work,lwork,info)
         if(info<0)then
-          write(*,*)'dgesvd svtnvs failed with info=',info
+          write(*,*)'dgesvd of svtnvs matrix failed with info=',info
           stop
         else if(info>0) then
-          write(*,*)'dgesvd svtnvs failed with info=',info
+          write(*,*)'dgesvd of svtnvs matrix failed with info=',info
           stop
         else
           allocate(innerinverse(K,K))
 
           allocate(v2(K,K))
-          v2=transpose(vt2)
+          v2 = transpose(vt2)
           allocate(sigmaKK2(K,K))
-          sigmaKK2=0.d0
+          sigmaKK2 = 0.d0
           do indexK = 1, K
             sigmaKK2(indexK,indexK)=1.0d0/sigma2(indexK)
           end do
           allocate(ut2(K,K))
-          ut2=transpose(u2)
+          ut2 = transpose(u2)
 
+          tmp = 0.d0
           call dgemm('N','N',K,K,K,1.0d0,v2,K,sigmaKK2,K,0.d0,tmp,K)
-          innerinverse=tmp
+          innerinverse = tmp
+          tmp = 0.d0
           call dgemm('N','N',K,K,K,1.0d0,innerinverse,K,ut2,K,0.d0,tmp,K)
-          innerinverse=tmp
+          innerinverse = tmp
+          if(allocated(v2))deallocate(v2)
+          if(allocated(sigmaKK2))deallocate(sigmaKK2)
+          if(allocated(ut2))deallocate(ut2)
+          if(allocated(sigma2))deallocate(sigma2)
+          if(allocated(u2))deallocate(u2)
+          if(allocated(vt2))deallocate(vt2)
 
+          tmp = 0.d0
           call dgemm('N','N',K,K,K,1.0d0,theta,K,innerinverse,K,0.d0,tmp,K)
           theta = tmp
 
           if(allocated(innerinverse))deallocate(innerinverse)
-          if(allocated(v2))deallocate(v2)
-          if(allocated(sigmaKK2))deallocate(sigmaKK2)
-          if(allocated(ut2))deallocate(ut2)
         end if
+        tmp = 0.d0
         call dgemm('N','N',K,K,K,1.0d0,theta,K,sigmaKK,K,0.d0,tmp,K)
-        theta=tmp
+        theta = tmp
+        tmp = 0.d0
         call dgemm('N','N',K,K,K,1.0d0,theta,K,vt,K,0.d0,tmp,K)
-        theta=tmp
-        if(allocated(sigma2))deallocate(sigma2)
-        if(allocated(u2))deallocate(u2)
-        if(allocated(vt2))deallocate(vt2)
+        theta = tmp
         if(allocated(sigmaKK))deallocate(sigmaKK)
         if(allocated(svtnvs))deallocate(svtnvs)
         if(allocated(v))deallocate(v)
@@ -479,5 +493,5 @@ module MBAR_m
       if(allocated(sigma))deallocate(sigma)
       if(allocated(u))deallocate(u)
       if(allocated(vt))deallocate(vt)
-    end subroutine weight2theta
+    end subroutine ComputCovMatFromWeights
 end module MBAR_m

@@ -5,6 +5,7 @@ module simulation_m
   use snapshot_m
   private
   integer(kind=4), public :: nSimulations, totalNumSnapshots
+  real(kind=fp_kind), allocatable, public :: simulationsTheta(:,:)
 
   type :: simulation_t
     real(kind=fp_kind) :: beta = 1.d0/(kB*298.0)  ! inverse temperature of this simulation
@@ -14,6 +15,7 @@ module simulation_m
     type ( snapshot_t ), allocatable :: snapshots(:) ! point to the snapshots
     contains
       procedure :: destroy
+      procedure :: getSimulationInfo
   end type simulation_t
   type ( simulation_t ), allocatable, target, public :: simulations(:) ! to save the information of all the simulations
   public :: readSimulationInfo, deleteSimulationInfo
@@ -43,13 +45,29 @@ contains
       do indexS = 1, simulations(indexW)%nSnapshots
         read(id_data_file,*) itmp, simulations(indexW)%snapshots(indexS)%coordinate, &
                  & simulations(indexW)%snapshots(indexS)%energyUnbiased
-      !  write(*,*)'   ', simulations(indexW)%snapshots(indexS)%coordinate, &
-      !     & simulations(indexW)%snapshots(indexS)%energyUnbiased
       end do
       close(id_data_file)
     end do
     totalNumSnapshots = sum(simulations(:)%nSnapshots)
   end subroutine readSimulationInfo
+
+  subroutine getSimulationInfo(this, id_data_file, nSnapshots, simulationTemperature, restraintCenter, restraintStrength)
+    implicit none
+    class(simulation_t) :: this
+    integer(kind=4), intent(in) :: id_data_file
+    integer(kind=4), intent(in) :: nSnapshots
+    real(kind=fp_kind), intent(in) :: simulationTemperature
+    real(kind=fp_kind), intent(in) :: restraintCenter, restraintStrength
+    integer(kind=4) :: indexS
+    integer(kind=4) :: itmp
+    this%nSnapshots = nSnapshots
+    this%beta = 1.d0 / ( kB * simulationTemperature )
+    allocate(this%snapshots(this%nSnapshots))
+    do indexS = 1, this%nSnapshots
+      read(id_data_file,*) itmp, this%snapshots(indexS)%coordinate, &
+               & this%snapshots(indexS)%energyUnbiased
+    end do
+  end subroutine getSimulationInfo
 
   subroutine destroy(this)
     implicit none
@@ -69,6 +87,7 @@ contains
       call simulations(indexW)%destroy()
     end do
     if(allocated(simulations))deallocate(simulations)
+    if(allocated(simulationsTheta)) deallocate(simulationsTheta)
   end subroutine deleteSimulationInfo
 
 end module simulation_m
