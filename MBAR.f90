@@ -9,7 +9,7 @@ module MBAR_m
   
   contains
     subroutine MBAR(maxIteration,criterion,nSimulations,totalNumSnapshots,reducedEnergies, &
-         & nSnapshotsInSimulation,freeEnergies,weights,theta,solver)
+         & nSnapshotsInSimulation,freeEnergies,weights,covMat,solver)
       integer(kind=4), intent(in) :: maxIteration 
       real(kind=fp_kind), intent(in) :: criterion
       integer(kind=4), intent(in) :: nSimulations
@@ -18,7 +18,7 @@ module MBAR_m
       integer(kind=4), intent(in) :: nSnapshotsInSimulation(nSimulations)
       real(kind=fp_kind), intent(out) :: freeEnergies(nSimulations)
       real(kind=fp_kind), intent(out) :: weights(totalNumSnapshots,nSimulations)
-      real(kind=fp_kind), intent(out) :: theta(nSimulations,nSimulations)
+      real(kind=fp_kind), intent(out) :: covMat(nSimulations,nSimulations)
       character(len=3), intent(in), optional :: solver
 
       real(kind=fp_kind) :: minReducedEnergy
@@ -49,7 +49,7 @@ module MBAR_m
 
       logical :: file_exists
 
-      if(idebug == 1) write(*,*) 'Entering MBAR'
+      if(idebug == 1) write(6,*) 'Entering MBAR'
 
       if(present(solver))solv = solver
 
@@ -62,11 +62,8 @@ module MBAR_m
       shiftedReducedEnergies = reducedEnergies - minReducedEnergy
       expShiftedReducedEnergies = exp(-shiftedReducedEnergies)
  
-      do IndexW = 1, nSimulations
-        freeEnergies(IndexW) = minval(shiftedReducedEnergies(:,IndexW))
-      end do
-!      freeEnergies = freeEnergies - freeEnergies(1)
- 
+      forall(IndexW = 1:nSimulations) freeEnergies(IndexW) = minval(shiftedReducedEnergies(:,IndexW))
+
       allocate(numerator(totalNumSnapshots,nSimulations))
       allocate(denominator(totalNumSnapshots))
       if(solv == 'NRM')then
@@ -81,63 +78,37 @@ module MBAR_m
           oldFreeEnergies = freeEnergies
           oldExpFreeEnergies = exp(-oldFreeEnergies)
  
-          denominator = 0.d0
-          do JndexS = 1, totalNumSnapshots
-            do IndexW = 1, nSimulations
-              numerator(JndexS,IndexW) = expShiftedReducedEnergies(JndexS,IndexW) &
-                  & /oldExpFreeEnergies(IndexW)
-            end do
-            do KndexW = 1, nSimulations
-              denominator(JndexS) = denominator(JndexS) + &
-                & nSnapshotsInSimulation(KndexW) * numerator(JndexS,KndexW)
-            end do
-          end do
-          do IndexW = 1, nSimulations
-            do JndexS = 1, totalNumSnapshots
-              weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
-            end do
-          end do
+          forall (JndexS = 1: totalNumSnapshots, IndexW = 1 : nSimulations) numerator(JndexS,IndexW) = &
+              &  expShiftedReducedEnergies(JndexS,IndexW) / oldExpFreeEnergies(IndexW)
+          forall (JndexS = 1: totalNumSnapshots) denominator(JndexS) = &
+              &  sum(nSnapshotsInSimulation(:)*numerator(JndexS,:))
+
+          forall(IndexW = 1 : nSimulations, JndexS = 1 : totalNumSnapshots) &
+             & weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
          
-          residual = 1.0d0
-          do IndexW = 1, nSimulations
-            do JndexS = 1, totalNumSnapshots
-              residual(IndexW) = residual(IndexW) - weights(JndexS,IndexW)
-            end do
-          end do
+          forall (IndexW=1:nSimulations) residual(IndexW) = 1.0d0 - sum(weights(:,IndexW))
   
-          if(Iteration==0)write(*,'(1X,A,I6,A,G12.5)')'Iteration: ', Iteration, & 
+          if(Iteration==0)write(6,'(1X,A,I6,A,G12.5)')'Iteration: ', Iteration, & 
                & ', sum of |residual|: ', sum(abs(residual))
  
           Iteration = Iteration + 1
  
-          jacobian = 0.d0
-          do IndexW = 1, nSimulations
-            do JndexW = 1, nSimulations
-              do JndexS = 1, totalNumSnapshots
-                jacobian(IndexW, JndexW) = jacobian(IndexW, JndexW) + &
-                   & numerator(JndexS,IndexW) * nSnapshotsInSimulation(JndexW) * &
-                   & numerator(JndexS,JndexW)/denominator(JndexS)**2
-                if(IndexW == JndexW) jacobian(IndexW, JndexW) = jacobian(IndexW,JndexW) - &
-                   & numerator(JndexS,IndexW)/denominator(JndexS)
-              end do
-            end do
-          end do
+          forall(IndexW = 1 : nSimulations, JndexW = 1 : nSimulations) jacobian(IndexW, JndexW) = &
+              & sum(numerator(:,IndexW) * nSnapshotsInSimulation(JndexW) * &
+              &     numerator(:,JndexW)/denominator(:)**2) 
+          forall(IndexW = 1 : nSimulations) jacobian(IndexW,IndexW) = &
+              & jacobian(IndexW,IndexW) - sum(numerator(:,IndexW)/denominator(:))
  
           call squareMatrixInv(nSimulations,jacobian,jacobianInv)
  
-          deltaFreeEnergies = 0.d0
-          do IndexW = 1, nSimulations
-            do JndexW = 1, nSimulations
-              deltaFreeEnergies(IndexW) = deltaFreeEnergies(IndexW) + &
-                & jacobianInv(IndexW,JndexW)*residual(JndexW)
-            end do
-          end do
+          forall(IndexW = 1 : nSimulations) deltaFreeEnergies(IndexW) = &
+             & sum(jacobianInv(IndexW,:)*residual(:))
+
           freeEnergies = oldFreeEnergies - deltaFreeEnergies
           freeEnergies = freeEnergies - freeEnergies(1)
           freeEnergyRmsd = rmsd(nSimulations,oldFreeEnergies,freeEnergies)
-          write(*,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', &
+          write(6,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', &
                 & sum(abs(residual)), ', RMSD of free energy: ', freeEnergyRmsd
-         ! if(freeEnergyRmsd<criterion)exit
           if(maxval(abs((freeEnergies(2:)-oldFreeEnergies(2:))/oldFreeEnergies(2:)))<criterion)exit
         end do
       else if(solv=='DI0' .or. solv=='DIR') then
@@ -152,38 +123,22 @@ module MBAR_m
           oldFreeEnergies = freeEnergies
           oldExpFreeEnergies = exp(-oldFreeEnergies)
  
-          denominator = 0.d0
-          do JndexS = 1, totalNumSnapshots
-            do IndexW = 1, nSimulations
-              numerator(JndexS,IndexW) = expShiftedReducedEnergies(JndexS,IndexW)
-            end do
-            do KndexW = 1, nSimulations
-              denominator(JndexS) = denominator(JndexS) + &
-                & nSnapshotsInSimulation(KndexW) * &
-                & numerator(JndexS,KndexW)/oldExpFreeEnergies(KndexW)
-            end do
-          end do
-          do IndexW = 1, nSimulations
-            do JndexS = 1, totalNumSnapshots
-              weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
-            end do
-          end do
-         
-          freeEnergies = 0.0d0
-          do IndexW = 1, nSimulations
-            do JndexS = 1, totalNumSnapshots
-              freeEnergies(IndexW) = freeEnergies(IndexW) + weights(JndexS,IndexW)
-            end do
-          end do
+          forall (JndexS = 1: totalNumSnapshots, IndexW = 1 : nSimulations) numerator(JndexS,IndexW) = &
+              &  expShiftedReducedEnergies(JndexS,IndexW)
+          forall (JndexS = 1: totalNumSnapshots) denominator(JndexS) = &
+              &  sum(nSnapshotsInSimulation(:)*numerator(JndexS,:)/oldExpFreeEnergies(:))
+
+          forall(IndexW = 1 : nSimulations, JndexS = 1 : totalNumSnapshots) &
+             & weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
+
+          forall(IndexW = 1 : nSimulations) freeEnergies(IndexW) = sum(weights(:,IndexW))
+
           freeEnergies = -log(freeEnergies)
           freeEnergies = freeEnergies - freeEnergies(1)
           freeEnergyRmsd = rmsd(nSimulations,oldFreeEnergies,freeEnergies)
           maxRelativeDelta = maxval(abs((freeEnergies(2:)-oldFreeEnergies(2:))/oldFreeEnergies(2:)))
-!          write(77,'(3F12.6)')(freeEnergies(IndexW),oldFreeEnergies(IndexW),abs((freeEnergies(IndexW)& 
-!              & -oldFreeEnergies(IndexW))/oldFreeEnergies(IndexW)),IndexW=1,nSimulations)
-          write(*,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', RMSD of free energy: ', & 
+          write(6,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', RMSD of reduced free energy: ', &
              & freeEnergyRmsd, ' Max relative delta: ', maxRelativeDelta
-         ! if(freeEnergyRmsd<criterion)exit
           if(iteration>1.and.maxRelativeDelta<criterion)then
             write(6,'(A)')'Convergence criterion met'
             exit
@@ -191,29 +146,19 @@ module MBAR_m
         end do
       end if
       if(Iteration >= maxIteration)then
-         write(*,*)'Maximum iteration arrived'
+         write(6,*)'Maximum iteration arrived'
          write(66)freeEnergies
          stop
       end if
 
-      denominator = 0.d0
-      do JndexS = 1, totalNumSnapshots
-        do IndexW = 1, nSimulations
-          numerator(JndexS,IndexW) = expShiftedReducedEnergies(JndexS,IndexW)/exp(-freeEnergies(IndexW))
-        end do
-        do KndexW = 1, nSimulations
-          denominator(JndexS) = denominator(JndexS) + &
-            & nSnapshotsInSimulation(KndexW) * numerator(JndexS,KndexW)
-        end do
-      end do
-      do IndexW = 1, nSimulations
-        do JndexS = 1, totalNumSnapshots
-          weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
-        end do
-        weights(:,IndexW) = weights(:,IndexW)/sum(weights(:,IndexW))
-      end do
-
-      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations,nSnapshotsInSimulation,weights,theta)
+      forall (JndexS = 1 : totalNumSnapshots, IndexW = 1 : nSimulations) &
+          & numerator(JndexS,IndexW) = expShiftedReducedEnergies(JndexS,IndexW)/exp(-freeEnergies(IndexW))
+      forall (JndexS = 1 : totalNumSnapshots) denominator(JndexS) = &
+          & sum(nSnapshotsInSimulation(:) * numerator(JndexS,:))
+      forall(IndexW = 1 : nSimulations, JndexS = 1 : totalNumSnapshots) &
+          & weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
+     
+      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations,nSnapshotsInSimulation,weights,covMat)
 
       if(allocated(oldFreeEnergies))deallocate(oldFreeEnergies)
       if(allocated(shiftedReducedEnergies))deallocate(shiftedReducedEnergies)
@@ -242,19 +187,13 @@ module MBAR_m
       real(kind=fp_kind) :: numerator, denominator
       integer(kind=4) :: IndexS, IndexW
       integer(kind=4) :: JndexS, JndexW
+      integer(kind=4) :: KndexS, KndexW
 
-      if(idebug == 1) write(*,*) 'Entering MBAR_weight'
-      do JndexS = 1, totalNumSnapshots
-        numerator = exp(-targetReducedEnergies(JndexS))
-        denominator = 0.d0
-        do JndexW = 1, nSimulations
-          denominator = denominator + &
-            & nSnapshotsInSimulation(JndexW)*exp(-(reducedEnergies(JndexS,JndexW)-freeEnergies(JndexW)))
-        end do
-        weights(JndexS) = numerator/denominator
-      end do
+      if(idebug == 1) write(6,*) 'Entering MBAR_weight'
+      forall (JndexS = 1: totalNumSnapshots) weights(JndexS) = &
+          & exp(-targetReducedEnergies(JndexS))/ &
+          & sum(nSnapshotsInSimulation(:)*exp(freeEnergies(:)-reducedEnergies(JndexS,:)))
       freeenergy = -log(sum(weights))
-      weights = weights/sum(weights)
     end subroutine MBAR_weight
 
     subroutine squareMatrixInv(m,a,ainv)
@@ -282,10 +221,10 @@ module MBAR_m
       acopy=a
       call dgesvd('A','A',m,m,acopy,m,sigma,u,m,vt,m,work,lwork,info)
       if(info<0)then
-        write(*,*)'dgesvd failed with info=',info
+        write(6,*)'dgesvd failed with info=',info
         stop
       else if(info>0) then
-        write(*,*)'dgesvd failed with info=',info
+        write(6,*)'dgesvd failed with info=',info
         stop
       else
         do i = 1, m
@@ -349,12 +288,12 @@ module MBAR_m
       deallocate(work)
     end subroutine squareMatrixInv2
 
-    subroutine ComputCovMatFromWeights(N,K,nvec,weights,theta)
+    subroutine ComputCovMatFromWeights(N,K,nvec,weights,covMat)
       implicit none
       integer(kind=4), intent(in) :: N, K
       integer(kind=4), intent(in) :: nvec(K)
       real(kind=fp_kind), intent(in) :: weights(N,K)
-      real(kind=fp_kind), intent(out) :: theta(K,K)
+      real(kind=fp_kind), intent(out) :: covMat(K,K)
       
       real(kind=fp_kind) :: nmat(K,K)
 
@@ -373,8 +312,8 @@ module MBAR_m
       real(kind=fp_kind), allocatable :: innerinverse(:,:)
 
       integer(kind=4) :: indexN, indexK
-
-      
+      integer(kind=4) :: jndexN, jndexK
+      integer(kind=4) :: kndexN, kndexK
 
       lwork = 10*N
       allocate(w(N,K))
@@ -388,11 +327,12 @@ module MBAR_m
 
       call dgesvd('S','S',N,K,w,N,sigma,u,N,vt,K,work,lwork,info)
       if(allocated(w))deallocate(w)
+
       if(info < 0)then
-        write(*,*)'dgesvd of weight matrix failed with info=',info
+        write(6,*)'dgesvd of weight matrix failed with info=',info
         stop
       else if(info > 0) then
-        write(*,*)'dgesvd of weight matrix failed with info=',info
+        write(6,*)'dgesvd of weight matrix failed with info=',info
         stop
       else
         allocate(sigmaKK(K,K))
@@ -402,38 +342,18 @@ module MBAR_m
         v=transpose(vt)
 
         sigmaKK = 0.d0
-        do indexK = 1, K
-          sigmaKK(indexK,indexK) = sigma(indexK)
-        end do
-
-        ! theta = v*sigma_K
-        theta = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,v,K,sigmaKK,K,0.d0,theta,K)
+        forall (indexK = 1:K) sigmaKK(indexK,indexK) = sigma(indexK)
 
         nmat = 0.d0
-        do indexK = 1, K
-          nmat(indexK,indexK) = dble(nvec(indexK))
-        end do
+        forall (indexK = 1:K) nmat(indexK,indexK) = dble(nvec(indexK))
 
-        svtnvs=0.d0
+        svtnvs = matmul(sigmaKK,vt)
+        svtnvs = matmul(svtnvs,nmat)
+        svtnvs = matmul(svtnvs,v)
+        svtnvs = -matmul(svtnvs,sigmaKK)
 
-        tmp = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,sigmaKK,K,vt,K,0.d0,tmp,K) 
-        svtnvs = tmp
-        tmp = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,svtnvs,K,nmat,K,0.d0,tmp,K) 
-        svtnvs = tmp
-        tmp = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,svtnvs,K,v,K,0.d0,tmp,K)    
-        svtnvs = tmp
-        tmp = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,svtnvs,K,sigmaKK,K,0.d0,tmp,K)    
-        svtnvs = -tmp
-        do indexK = 1, K
-          svtnvs(indexK,indexK) = svtnvs(indexK,indexK) + 1.0d0
-        end do
+        forall (indexK = 1:K)  svtnvs(indexK,indexK) = 1.0d0 + svtnvs(indexK,indexK)
         if(allocated(work))deallocate(work)
-
         lwork = 10*K
         allocate(work(lwork))
         allocate(sigma2(K))
@@ -441,30 +361,26 @@ module MBAR_m
         allocate(vt2(K,K))
         call dgesvd('A','A',K,K,svtnvs,K,sigma2,u2,K,vt2,K,work,lwork,info)
         if(info<0)then
-          write(*,*)'dgesvd of svtnvs matrix failed with info=',info
+          write(6,*)'dgesvd of svtnvs matrix failed with info=',info
           stop
         else if(info>0) then
-          write(*,*)'dgesvd of svtnvs matrix failed with info=',info
+          write(6,*)'dgesvd of svtnvs matrix failed with info=',info
           stop
         else
           allocate(innerinverse(K,K))
-
           allocate(v2(K,K))
           v2 = transpose(vt2)
           allocate(sigmaKK2(K,K))
           sigmaKK2 = 0.d0
           do indexK = 1, K
-            sigmaKK2(indexK,indexK)=1.0d0/sigma2(indexK)
+            if(abs(sigma2(indexK))>1.E-10)sigmaKK2(indexK,indexK)=1.0d0/sigma2(indexK)
           end do
           allocate(ut2(K,K))
           ut2 = transpose(u2)
 
-          tmp = 0.d0
-          call dgemm('N','N',K,K,K,1.0d0,v2,K,sigmaKK2,K,0.d0,tmp,K)
-          innerinverse = tmp
-          tmp = 0.d0
-          call dgemm('N','N',K,K,K,1.0d0,innerinverse,K,ut2,K,0.d0,tmp,K)
-          innerinverse = tmp
+          innerinverse = matmul(v2,sigmaKK2)
+          innerinverse = matmul(innerinverse,ut2)
+
           if(allocated(v2))deallocate(v2)
           if(allocated(sigmaKK2))deallocate(sigmaKK2)
           if(allocated(ut2))deallocate(ut2)
@@ -472,18 +388,13 @@ module MBAR_m
           if(allocated(u2))deallocate(u2)
           if(allocated(vt2))deallocate(vt2)
 
-          tmp = 0.d0
-          call dgemm('N','N',K,K,K,1.0d0,theta,K,innerinverse,K,0.d0,tmp,K)
-          theta = tmp
+          covMat = matmul(sigmaKK,innerinverse)
+          covMat = matmul(covMat,sigmaKK)
+          covMat = matmul(v,covMat)
+          covMat = matmul(covMat,vt)
 
           if(allocated(innerinverse))deallocate(innerinverse)
         end if
-        tmp = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,theta,K,sigmaKK,K,0.d0,tmp,K)
-        theta = tmp
-        tmp = 0.d0
-        call dgemm('N','N',K,K,K,1.0d0,theta,K,vt,K,0.d0,tmp,K)
-        theta = tmp
         if(allocated(sigmaKK))deallocate(sigmaKK)
         if(allocated(svtnvs))deallocate(svtnvs)
         if(allocated(v))deallocate(v)

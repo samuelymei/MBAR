@@ -14,7 +14,7 @@ module reducedHamiltonian_m
     real(kind=fp_kind), allocatable :: reducedEnergies(:)
     real(kind=fp_kind), allocatable :: weights(:)
     real(kind=fp_kind), allocatable :: weightsSE(:)
-    real(kind=fp_kind) :: freeEnergy, freeEnergySD2
+    real(kind=fp_kind) :: freeEnergy, freeEnergySD
     type (simulation_t), pointer :: ownSimulation =>Null()
     contains
       procedure :: destroy
@@ -134,50 +134,44 @@ module reducedHamiltonian_m
       allocate(weightsResampled(this%TotalNumSnapshots,nresamples))
       allocate(pmfResampled(nbins,nresamples))
 
-      accumulatedWeights(1) = this%weights(1)
-      do IndexS = 2, this%TotalNumSnapshots
-        accumulatedWeights(IndexS) = accumulatedWeights(IndexS-1) + this%weights(IndexS)
-      end do
+      forall(IndexS = 1 : this%TotalNumSnapshots) accumulatedWeights(IndexS) = sum(this%weights(1:IndexS))
+!      accumulatedWeights(1) = this%weights(1)
+!      do IndexS = 2, this%TotalNumSnapshots
+!        accumulatedWeights(IndexS) = accumulatedWeights(IndexS-1) + this%weights(IndexS)
+!      end do
       accumulatedWeights(this%TotalNumSnapshots) = 1.d0
 
-      do IndexB = 1, nbins
-        bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
-      end do 
-      do IndexS = 1, this%TotalNumSnapshots
-        idBinOrigin(IndexS) = int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
-      end do
+      forall(IndexB = 1 : nbins) bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
+      forall(IndexS = 1 : this%TotalNumSnapshots) &
+         & idBinOrigin(IndexS) = int((this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
 
       pmfResampled = 0.d0
       do IndexR = 1, nresamples
         write(6,'(1X,A,I)')'Bootstrapping cycle:',IndexR
-        call flush(6)
         do IndexS = 1, this%TotalNumSnapshots
           rand = MyUniformRand()
           irand = rand*this%TotalNumSnapshots + 1
           do JndexS = 1, this%TotalNumSnapshots
             if(accumulatedWeights(JndexS) >= rand)exit
           end do
-          idBinResampled(IndexS,IndexR)=idBinOrigin(irand)
-          weightsResampled(IndexS,IndexR)=this%weights(irand)
+          idBinResampled(IndexS,IndexR) = idBinOrigin(irand)
+          weightsResampled(IndexS,IndexR) = this%weights(irand)
         end do
-        weightsResampled(:,IndexR) = weightsResampled(:,IndexR) / sum(weightsResampled(:,IndexR))
         do IndexS = 1, this%TotalNumSnapshots
           if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) <= nbins)then
             pmfResampled(idBinResampled(IndexS,IndexR),IndexR) = & 
                & pmfResampled(idBinResampled(IndexS,IndexR),IndexR) + weightsResampled(IndexS,IndexR)
-               
           end if
         end do
       end do
-      pmfResampled = -log(pmfResampled)/this%beta
-      do IndexR = 1, nresamples
-        pmfResampled(:,IndexR) = pmfResampled(:,IndexR) - minval(pmfResampled(:,IndexR))
-      end do
+      pmfResampled = -log(pmfResampled)
+      forall( IndexR = 1 : nresamples) &
+        & pmfResampled(:,IndexR) = pmfResampled(:,IndexR) - pmfResampled(1,IndexR)
       do IndexB = 1, nbins
         pmf(IndexB) = sum(pmfResampled(IndexB,:))/nresamples
         pmfSE(IndexB) = sqrt(sum((pmfResampled(IndexB,:)-pmf(IndexB))**2)/nresamples)
       end do
-      pmf = pmf - minval(pmf)
+      pmf = pmf - pmf(1)
 
       deallocate(accumulatedWeights)
       deallocate(idBinOrigin)
