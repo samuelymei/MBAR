@@ -24,7 +24,8 @@ module reducedHamiltonian_m
       procedure :: bootstrap
   end type reducedHamiltonian_t
 
-  ! type (reducedHamiltonian_t), allocatable, public :: simulatedReducedHamiltonian(:)
+  type (reducedHamiltonian_t), allocatable, public, target :: simulatedReducedHamiltonian(:)
+  type (reducedHamiltonian_t), public, target :: targetReducedHamiltonian
 
 
   public :: reducedHamiltonian_t
@@ -135,10 +136,6 @@ module reducedHamiltonian_m
       allocate(pmfResampled(nbins,nresamples))
 
       forall(IndexS = 1 : this%TotalNumSnapshots) accumulatedWeights(IndexS) = sum(this%weights(1:IndexS))
-!      accumulatedWeights(1) = this%weights(1)
-!      do IndexS = 2, this%TotalNumSnapshots
-!        accumulatedWeights(IndexS) = accumulatedWeights(IndexS-1) + this%weights(IndexS)
-!      end do
       accumulatedWeights(this%TotalNumSnapshots) = 1.d0
 
       forall(IndexB = 1 : nbins) bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
