@@ -5,7 +5,6 @@ module simulation_m
   use snapshot_m
   private
   integer(kind=4), public :: nSimulations, totalNumSnapshots
-  real(kind=fp_kind), allocatable, public :: covFreeEnergies(:,:)
 
   type :: simulation_t
     real(kind=fp_kind) :: beta = 1.d0/(kB*298.0)  ! inverse temperature of this simulation
@@ -87,7 +86,6 @@ contains
       call simulations(indexW)%destroy()
     end do
     if(allocated(simulations))deallocate(simulations)
-    if(allocated(covFreeEnergies)) deallocate(covFreeEnergies)
   end subroutine deleteSimulationInfo
 
 end module simulation_m

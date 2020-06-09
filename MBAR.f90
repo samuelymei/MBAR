@@ -4,7 +4,7 @@ module MBAR_m
   use io_m
   use snapshot_m
   use simulation_m
-  use reducedHamiltonian_m
+!  use reducedHamiltonian_m
   implicit none
   
   contains
@@ -88,8 +88,8 @@ module MBAR_m
          
           forall (IndexW=1:nSimulations) residual(IndexW) = 1.0d0 - sum(weights(:,IndexW))
   
-          if(Iteration==0)write(6,'(1X,A,I6,A,G12.5)')'Iteration: ', Iteration, & 
-               & ', sum of |residual|: ', sum(abs(residual))
+!          if(Iteration==0)write(6,'(1X,A,I6,A,ES12.5)')'Iteration: ', Iteration, & 
+!               & ', sum of |residual|: ', sum(abs(residual))
  
           Iteration = Iteration + 1
  
@@ -107,7 +107,7 @@ module MBAR_m
           freeEnergies = oldFreeEnergies - deltaFreeEnergies
           freeEnergies = freeEnergies - freeEnergies(1)
           freeEnergyRmsd = rmsd(nSimulations,oldFreeEnergies,freeEnergies)
-          write(6,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', &
+          write(6,'(1X,A,I6,A,ES12.5,A,ES12.5)')'Iteration: ', Iteration, ', sum of |residual|: ', &
                 & sum(abs(residual)), ', RMSD of free energy: ', freeEnergyRmsd
           if(maxval(abs((freeEnergies(2:)-oldFreeEnergies(2:))/oldFreeEnergies(2:)))<criterion)exit
         end do
@@ -137,7 +137,7 @@ module MBAR_m
           freeEnergies = freeEnergies - freeEnergies(1)
           freeEnergyRmsd = rmsd(nSimulations,oldFreeEnergies,freeEnergies)
           maxRelativeDelta = maxval(abs((freeEnergies(2:)-oldFreeEnergies(2:))/oldFreeEnergies(2:)))
-          write(6,'(1X,A,I6,A,G12.5,A,G12.5)')'Iteration: ', Iteration, ', RMSD of reduced free energy: ', &
+          write(6,'(1X,A,I6,A,ES12.5,A,ES12.5)')'Iteration: ', Iteration, ', RMSD of reduced free energy: ', &
              & freeEnergyRmsd, ' Max relative delta: ', maxRelativeDelta
           if(iteration>1.and.maxRelativeDelta<criterion)then
             write(6,'(A)')'Convergence criterion met'
@@ -173,7 +173,7 @@ module MBAR_m
     end subroutine MBAR
   
     subroutine MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation, &
-         & freeEnergies,targetReducedEnergies,weights,freeenergy)
+         & freeEnergies,targetReducedEnergies,weights,freeEnergy,freeEnergySD)
       implicit none
       integer(kind=4), intent(in) :: nSimulations
       integer(kind=4), intent(in) :: totalNumSnapshots
@@ -181,19 +181,28 @@ module MBAR_m
       integer(kind=4), intent(in) :: nSnapshotsInSimulation(nSimulations)
       real(kind=fp_kind), intent(in) :: freeEnergies(nSimulations)
       real(kind=fp_kind), intent(in) :: targetReducedEnergies(totalNumSnapshots)
-      real(kind=fp_kind), intent(out) :: weights(totalNumSnapshots)
-      real(kind=fp_kind), intent(out) :: freeenergy
+      real(kind=fp_kind), intent(in out) :: weights(totalNumSnapshots,nSimulations+1)
+      real(kind=fp_kind), intent(out) :: freeEnergy
+      real(kind=fp_kind), intent(out) :: freeEnergySD
 
-      real(kind=fp_kind) :: numerator, denominator
+      integer(kind=4) :: extNSnapshotsInSimulation(nSimulations+1)
+      real(kind=fp_kind) :: extCovFreeEnergies(nSimulations+1,nSimulations+1)
       integer(kind=4) :: IndexS, IndexW
       integer(kind=4) :: JndexS, JndexW
       integer(kind=4) :: KndexS, KndexW
 
       if(idebug == 1) write(6,*) 'Entering MBAR_weight'
-      forall (JndexS = 1: totalNumSnapshots) weights(JndexS) = &
+      forall (JndexS = 1: totalNumSnapshots) weights(JndexS,nSimulations+1) = &
           & exp(-targetReducedEnergies(JndexS))/ &
           & sum(nSnapshotsInSimulation(:)*exp(freeEnergies(:)-reducedEnergies(JndexS,:)))
-      freeenergy = -log(sum(weights))
+      freeenergy = -log(sum(weights(:,nSimulations+1)))
+
+      extNSnapshotsInSimulation = 0
+      extNSnapshotsInSimulation(1:nSimulations) = nSnapshotsInSimulation(1:nSimulations)
+      weights(:,nSimulations+1) = weights(:,nSimulations+1)/sum(weights(:,nSimulations+1))
+      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations+1,extNSnapshotsInSimulation,weights,extCovFreeEnergies)
+      freeEnergySD = sqrt(extCovFreeEnergies(nSimulations+1,nSimulations+1) - &
+                     &  2*extCovFreeEnergies(nSimulations+1,1) + extCovFreeEnergies(1,1) )
     end subroutine MBAR_weight
 
     subroutine squareMatrixInv(m,a,ainv)

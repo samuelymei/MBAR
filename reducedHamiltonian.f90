@@ -21,6 +21,7 @@ module reducedHamiltonian_m
       procedure :: init
       procedure :: processTrajectories
       procedure :: readInEnergy
+      procedure :: computePMF
       procedure :: bootstrap
   end type reducedHamiltonian_t
 
@@ -29,6 +30,7 @@ module reducedHamiltonian_m
 
 
   public :: reducedHamiltonian_t
+  public :: computePMF
   
   contains
 !    function constructor(beta,TotalNumSnapshots,nOwnSnapshots)
@@ -105,14 +107,79 @@ module reducedHamiltonian_m
       if(allocated(this%weightsSE))deallocate(this%weightsSE)
     end subroutine destroy
 
-    subroutine bootstrap(this,nresamples,nbins,binmin,binwidth,pmf,pmfSE)
+    subroutine computePMF(this)
+      use io_m
+      use precision_m
+      use bin_m
+      use MBAR_m
+      use simulation_m
+      implicit none
+      class(reducedHamiltonian_t) :: this
+      real(kind=fp_kind), allocatable :: extWeights(:,:)
+      real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
+      integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
+      integer(kind=4) :: IndexW, IndexS, IndexB
+      integer(kind=4) :: JndexS
+
+      allocate(extWeights(totalNumSnapshots,nSimulations+nbins))
+      allocate(extCovFreeEnergies(nSimulations+nbins,nSimulations+nbins))
+      allocate(extNSnapshotsInSimulation(nSimulations+nbins))
+
+      extWeights = 0.d0
+      forall(IndexW = 1 : nSimulations)extWeights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
+      extNSnapshotsInSimulation = 0
+      forall(IndexW = 1 : nSimulations)extNSnapshotsInSimulation(IndexW) = simulatedReducedHamiltonian(IndexW)%nOwnSnapshots
+      bins(:)%pmf = 0.d0
+      bins(:)%pmfSE = 0.d0
+      bins(:)%reweightingEntropy = 0.d0
+      bins(:)%nSnapshotsInBin = 0 
+      bins(:)%sumOfWeightsInBin = 0.d0
+      do IndexS = 1, totalNumSnapshots
+        IndexB = int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
+        if(IndexB > nbins .or. IndexB < 1) cycle
+        extWeights(IndexS,nSimulations+IndexB) = this%weights(IndexS)
+        bins(IndexB)%pmf = bins(IndexB)%pmf + this%weights(IndexS)
+        bins(IndexB)%reweightingEntropy = bins(IndexB)%reweightingEntropy + &
+          & this%weights(IndexS)*log(this%weights(IndexS))
+        bins(IndexB)%nSnapshotsInBin = bins(IndexB)%nSnapshotsInBin + 1
+        bins(IndexB)%sumOfWeightsInBin = bins(IndexB)%sumOfWeightsInBin + &
+          & this%weights(IndexS)
+      end do
+  
+      forall(IndexB = 1 : nbins) extWeights(:,nSimulations+IndexB) = extWeights(:,nSimulations+IndexB)/sum(extWeights(:,nSimulations+IndexB))
+  
+      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations+nbins,extNSnapshotsInSimulation,extWeights,extCovFreeEnergies)
+  
+      bins(:)%pmf = -log(bins(:)%pmf)
+      bins(:)%pmf = bins(:)%pmf - bins(1)%pmf
+      forall(IndexB=1:nbins) bins(IndexB)%pmfSE = &
+          & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
+              &  + extCovFreeEnergies(nSimulations+1,nSimulations+1) &
+            &    - 2*extCovFreeEnergies(nSimulations+1,nSimulations+IndexB) )
+      bins(:)%reweightingEntropy = -(bins(:)%reweightingEntropy/bins(:)%sumOfWeightsInBin-log(bins(:)%sumOfWeightsInBin)) &
+           & /log(dble(bins(:)%nSnapshotsInBin))
+      open(id_target_pmf_file , file = targetHamiltonianPmfFile)
+      write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian (kcal/mol)'
+      do IndexB = 1, nbins
+        write(id_target_pmf_file,'(F8.3,3F9.3)')bins(IndexB)%bincenter, bins(IndexB)%pmf/this%beta, &
+             & bins(IndexB)%pmfSE/this%beta, bins(IndexB)%reweightingEntropy
+        write(6,'(F8.3,3F9.3)')bins(IndexB)%bincenter, bins(IndexB)%pmf/this%beta, &
+             & bins(IndexB)%pmfSE/this%beta, bins(IndexB)%reweightingEntropy
+      end do
+      close(id_target_pmf_file)
+      deallocate(extWeights)
+      deallocate(extNSnapshotsInSimulation)
+      deallocate(extCovFreeEnergies)
+
+    end subroutine computePMF
+
+    subroutine bootstrap(this,nresamples)
       use random_m
+      use bin_m
       implicit none
       class (reducedHamiltonian_t) :: this
       integer(kind=4), intent(in) :: nresamples
-      integer(kind=4), intent(in) :: nbins
-      real(kind=fp_kind), intent(in) :: binmin, binwidth
-      real(kind=fp_kind), intent(out) :: pmf(nbins), pmfSE(nbins)
+      real(kind=fp_kind) :: pmf(nbins), pmfSE(nbins)
  
       real(kind=fp_kind), allocatable :: accumulatedWeights(:)
       real(kind=fp_kind), allocatable :: pmfResampled(:,:)
@@ -123,14 +190,11 @@ module reducedHamiltonian_m
       real(kind=fp_kind) :: rand
       integer(kind=4) :: irand
 
-      real(kind=fp_kind), allocatable :: bincenters(:)
-
       integer(kind=4) :: IndexB, IndexS, IndexR
       integer(kind=4) :: JndexS
 
       allocate(accumulatedWeights(this%TotalNumSnapshots))
       allocate(idBinOrigin(this%TotalNumSnapshots))
-      allocate(bincenters(nbins))
       allocate(idBinResampled(this%TotalNumSnapshots,nresamples))
       allocate(weightsResampled(this%TotalNumSnapshots,nresamples))
       allocate(pmfResampled(nbins,nresamples))
@@ -138,7 +202,7 @@ module reducedHamiltonian_m
       forall(IndexS = 1 : this%TotalNumSnapshots) accumulatedWeights(IndexS) = sum(this%weights(1:IndexS))
       accumulatedWeights(this%TotalNumSnapshots) = 1.d0
 
-      forall(IndexB = 1 : nbins) bincenters(IndexB) = binmin + (IndexB-0.5)*binwidth
+      forall(IndexB = 1 : nbins) bins(IndexB)%bincenter = binmin + (IndexB-0.5)*binwidth
       forall(IndexS = 1 : this%TotalNumSnapshots) &
          & idBinOrigin(IndexS) = int((this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
 
@@ -170,9 +234,13 @@ module reducedHamiltonian_m
       end do
       pmf = pmf - pmf(1)
 
+      write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian from bootstrapping (kcal/mol)'
+      do IndexB = 1, nbins
+        write(6,'(F8.3,2F9.3)')bins(IndexB)%bincenter, pmf(IndexB)/targetReducedHamiltonian%beta, &
+            & pmfSE(IndexB)/targetReducedHamiltonian%beta
+      end do
       deallocate(accumulatedWeights)
       deallocate(idBinOrigin)
-      deallocate(bincenters)
       deallocate(idBinResampled)
       deallocate(weightsResampled)
       deallocate(pmfResampled)

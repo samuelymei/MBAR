@@ -13,6 +13,7 @@ program MBAR_caller
   real(kind=fp_kind), allocatable :: targetReducedEnergies(:)
 
   real(kind=fp_kind), allocatable :: weights(:,:)
+  real(kind=fp_kind), allocatable :: covFreeEnergies(:,:)
   integer(kind=4), allocatable :: nSnapshotsInSimulation(:)
 
   integer(kind=4) :: IndexW, IndexS, IndexB
@@ -75,7 +76,7 @@ program MBAR_caller
        & 2*covFreeEnergies(IndexW,1) + covFreeEnergies(1,1) )
   end forall
   do IndexW = 1, nSimulations
-    write(6,'(A,I3,A,F10.3,A,G13.5)')' Free energy (kcal/mol) of Hamiltonian ', IndexW, ' is: ', &
+    write(6,'(A,I3,A,F8.3,A,F8.3)')' Free energy (kcal/mol) of Hamiltonian ', IndexW, ' is: ', &
        & simulatedReducedHamiltonian(IndexW)%freeEnergy/simulatedReducedHamiltonian(IndexW)%beta, & 
        & ' +- ', &
        & simulatedReducedHamiltonian(IndexW)%freeEnergySD/simulatedReducedHamiltonian(IndexW)%beta
@@ -83,8 +84,9 @@ program MBAR_caller
 
   forall(IndexW = 1 : nSimulations)simulatedReducedHamiltonian(IndexW)%weights(:) = weights(:, IndexW)
   deallocate(weights)
+  deallocate(covFreeEnergies)
 
-  allocate(weights(totalNumSnapshots,1))
+  allocate(weights(totalNumSnapshots,nSimulations+1))
   allocate(targetReducedEnergies(totalNumSnapshots))
 
 ! gather data for a target Hamiltonian
@@ -96,31 +98,29 @@ program MBAR_caller
 
 ! compute weight for each sample under the target Hamiltonian
   targetReducedEnergies = targetReducedHamiltonian%reducedEnergies
-  call MBAR_weight(nSimulations,totalNumSnapshots,reducedEnergies,nSnapshotsInSimulation,freeEnergies, &
-           &  targetReducedEnergies,weights,targetReducedHamiltonian%freeenergy)
-  write(6,'(A,F10.3)')' Free energy (kcal/mol) of the target Hamiltonian is ', &
-      targetReducedHamiltonian%freeenergy/targetReducedHamiltonian%beta
+  forall(IndexW = 1 : nSimulations) weights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
+  call MBAR_weight(nSimulations, totalNumSnapshots, reducedEnergies, nSnapshotsInSimulation, &
+           & freeEnergies, targetReducedEnergies, &
+           & weights, targetReducedHamiltonian%freeenergy, targetReducedHamiltonian%freeenergySD)
+  write(6,'(A,F8.3,1X,A,F8.3)')' Free energy (kcal/mol) of the target Hamiltonian is ', &
+           & targetReducedHamiltonian%freeenergy/targetReducedHamiltonian%beta, '+/-', &
+           & targetReducedHamiltonian%freeenergySD/targetReducedHamiltonian%beta
 
-  targetReducedHamiltonian%weights(:) = weights(:,1)
+  targetReducedHamiltonian%weights(:) = weights(:,nSimulations+1)
   open(id_target_weights_file, file = targetWeightsFile)
   write(id_target_weights_file,'(I,E12.5,1X,F10.5)')(IndexS, targetReducedHamiltonian%weights(IndexS), &
         &  targetReducedHamiltonian%snapshots(IndexS)%coordinate, IndexS = 1, totalNumSnapshots)
   close(id_target_weights_file)
 
   deallocate(weights)
-  deallocate(covFreeEnergies)
   deallocate(nSnapshotsInSimulation)
 
 ! Compute PMF for the target Hamiltonian
   call initbins()
-  call computePMF()
+  call targetReducedHamiltonian%computePMF()
 
 ! bootstrapping for the calculations of STD Err for PMF
-!  call targetReducedHamiltonian%bootstrap(100,nbins,binmin,binwidth,pmf,pmfSE)
-!  do IndexB = 1, nbins
-!    write(90,'(F8.3,3F9.3)')bincenter(IndexB), pmf(IndexB)/targetReducedHamiltonian%beta, &
-!        & pmfSE(IndexB)/targetReducedHamiltonian%beta, reweightingEntropy(IndexB)
-!  end do
+!  call targetReducedHamiltonian%bootstrap(100)
 
 ! delete data space
   do IndexW = 1, nSimulations
