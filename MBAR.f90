@@ -2,9 +2,6 @@ module MBAR_m
   use precision_m
   use constant_m
   use io_m
-  use snapshot_m
-  use simulation_m
-!  use reducedHamiltonian_m
   implicit none
   
   contains
