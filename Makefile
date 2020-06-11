@@ -1,8 +1,8 @@
 .SUFFIXES: 
 .SUFFIXES: .f90 .o
 
-FC = ifort
-FFLAGS = -CB
+FC = gfortran
+FFLAGS = -O2
 INCLUDE = 
 MKL_HOME=/home/ymei/softwares/intel/mkl
 LIBS = -L$(MKL_HOME)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lm

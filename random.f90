@@ -36,11 +36,11 @@ module random_m
   
   subroutine Init_Random_Seed()
     use iso_fortran_env, only: int64
-    USE IFPORT, only: getpid
     implicit none
     integer, allocatable :: seed(:)
     integer :: i, n, un, istat, dt(8), pid
     integer(int64) :: t
+    integer :: getpid
   
     call random_seed(size = n)
     allocate(seed(n))

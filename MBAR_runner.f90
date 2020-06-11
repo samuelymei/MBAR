@@ -108,7 +108,7 @@ program MBAR_caller
 
   targetReducedHamiltonian%weights(:) = weights(:,nSimulations+1)
   open(id_target_weights_file, file = targetWeightsFile)
-  write(id_target_weights_file,'(I,E12.5,1X,F10.5)')(IndexS, &
+  write(id_target_weights_file,'(I8,E12.5,1X,F10.5)')(IndexS, &
         &  targetReducedHamiltonian%weights(IndexS)/sum(targetReducedHamiltonian%weights(:)), &
         &  targetReducedHamiltonian%snapshots(IndexS)%coordinate, IndexS = 1, totalNumSnapshots)
   close(id_target_weights_file)
@@ -121,7 +121,7 @@ program MBAR_caller
   call targetReducedHamiltonian%computePMF()
 
 ! bootstrapping for the calculations of STD Err for PMF
-!  call targetReducedHamiltonian%bootstrap(100)
+  call targetReducedHamiltonian%bootstrap(100)
 
 ! delete data space
   do IndexW = 1, nSimulations

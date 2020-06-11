@@ -146,7 +146,8 @@ module reducedHamiltonian_m
           & this%weights(IndexS)
       end do
   
-      forall(IndexB = 1 : nbins) extWeights(:,nSimulations+IndexB) = extWeights(:,nSimulations+IndexB)/sum(extWeights(:,nSimulations+IndexB))
+      forall(IndexB = 1 : nbins) extWeights(:,nSimulations+IndexB) = &
+            & extWeights(:,nSimulations+IndexB)/sum(extWeights(:,nSimulations+IndexB))
   
       call ComputCovMatFromWeights(totalNumSnapshots,nSimulations+nbins,extNSnapshotsInSimulation,extWeights,extCovFreeEnergies)
   
@@ -208,7 +209,7 @@ module reducedHamiltonian_m
 
       pmfResampled = 0.d0
       do IndexR = 1, nresamples
-        write(6,'(1X,A,I)')'Bootstrapping cycle:',IndexR
+        write(6,'(1X,A,I5)')'Bootstrapping cycle:',IndexR
         do IndexS = 1, this%TotalNumSnapshots
           rand = MyUniformRand()
           irand = rand*this%TotalNumSnapshots + 1
