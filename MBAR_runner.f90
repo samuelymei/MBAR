@@ -108,7 +108,8 @@ program MBAR_caller
 
   targetReducedHamiltonian%weights(:) = weights(:,nSimulations+1)
   open(id_target_weights_file, file = targetWeightsFile)
-  write(id_target_weights_file,'(I,E12.5,1X,F10.5)')(IndexS, targetReducedHamiltonian%weights(IndexS), &
+  write(id_target_weights_file,'(I,E12.5,1X,F10.5)')(IndexS, &
+        &  targetReducedHamiltonian%weights(IndexS)/sum(targetReducedHamiltonian%weights(:)), &
         &  targetReducedHamiltonian%snapshots(IndexS)%coordinate, IndexS = 1, totalNumSnapshots)
   close(id_target_weights_file)
 
