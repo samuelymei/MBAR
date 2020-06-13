@@ -21,6 +21,17 @@ function Rmsd(n, a1, a2)
   rmsd = sqrt(sum((a1-a2)**2)/n)
 end function Rmsd
 
+subroutine Weighted_Mean_and_StandardDev(n,weight,x,mean,stdDev)
+  use precision_m
+  implicit none
+  integer(kind=4), intent(in) :: n
+  real(kind=fp_kind), intent(in) :: weight(n)
+  real(kind=fp_kind), intent(in) :: x(n)
+  real(kind=fp_kind), intent(out) :: mean, stdDev
+  mean = sum(weight(:)*x(:))/sum(weight(:))
+  stdDev = sqrt(sum(weight(:)/sum(weight(:))*(x(:)-mean)**2))
+end subroutine Weighted_Mean_and_StandardDev
+
 subroutine Mean_and_StandardDev(n,x,mean,stdDev)
   use precision_m
   implicit none
@@ -41,6 +52,21 @@ subroutine Mean_and_StandardErr(n,x,mean,stdErr)
   stdErr = sqrt(sum((x-mean)**2))/n
 end subroutine Mean_and_StandardErr
 
+function cross_correlation(n,x,y)
+   use precision_m
+   implicit none
+   integer(kind=4), intent(in) :: n
+   real(kind=fp_kind), intent(in) :: x(n), y(n)
+   real(kind=fp_kind) :: cross_correlation
+   real(kind=fp_kind) :: xMean, xStdDev
+   real(kind=fp_kind) :: yMean, yStdDev
+   real(kind=fp_kind) :: numerator, denominator
+   call Mean_and_StandardDev(n, x, xMean, xStdDev)
+   call Mean_and_StandardDev(n, y, yMean, yStdDev)
+   numerator = sum((x(:)-xMean)*(y(:)-yMean))/n
+   denominator = xStdDev*yStdDev
+   cross_correlation = numerator / denominator
+end function cross_correlation
 
 function IsOdd( i )
   implicit none

@@ -6,4 +6,4 @@
 "datafile name"   number_of_snapshots   temperature   restraint_center   restraint_strength
 
 ## Data file format
-Order_number   coordinate   unbiased_energy
+sequence   coordinate   unbiased_energy

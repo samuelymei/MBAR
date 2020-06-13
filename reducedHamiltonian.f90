@@ -31,6 +31,8 @@ module reducedHamiltonian_m
 
   public :: reducedHamiltonian_t
   public :: computePMF
+  public :: MobleyOverlap
+  public :: crossCorrelationBetweenHs
   
   contains
 !    function constructor(beta,TotalNumSnapshots,nOwnSnapshots)
@@ -247,4 +249,30 @@ module reducedHamiltonian_m
       deallocate(pmfResampled)
     end subroutine bootstrap
 
+    function MobleyOverlap(n,n1,weights1,weights2) result(overlap)
+      implicit none
+      integer(kind=4), intent(in) :: n, n1
+      real(kind=fp_kind), intent(in) :: weights1(n), weights2(n)
+      real(kind=fp_kind) :: workWeights1(n), workWeights2(n)
+      real(kind=fp_kind) :: overlap
+      workWeights1(:) = weights1(:)
+      workWeights2(:) = weights2(:)
+      workWeights1(:) = workWeights1(:) / sum(workWeights1(:))
+      workWeights2(:) = workWeights2(:) / sum(workWeights2(:))
+      overlap = n1 * sum(workWeights1(:) * workWeights2(:))
+    end function MobleyOverlap
+
+    function crossCorrelationBetweenHs(n,weights1,weights2) result(cc)
+      implicit none
+      integer(kind=4), intent(in) :: n
+      real(kind=fp_kind), intent(in) :: weights1(n), weights2(n)
+      real(kind=fp_kind) :: workWeights1(n), workWeights2(n)
+      real(kind=fp_kind) :: cc
+      real(kind=fp_kind) :: cross_correlation
+      workWeights1(:) = weights1(:)
+      workWeights2(:) = weights2(:)
+      workWeights1(:) = workWeights1(:) / sum(workWeights1(:))
+      workWeights2(:) = workWeights2(:) / sum(workWeights2(:))
+      cc = cross_correlation(n,workWeights1,workWeights2)
+    end function crossCorrelationBetweenHs
 end module reducedHamiltonian_m

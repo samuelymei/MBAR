@@ -16,8 +16,11 @@ program MBAR_caller
   real(kind=fp_kind), allocatable :: covFreeEnergies(:,:)
   integer(kind=4), allocatable :: nSnapshotsInSimulation(:)
 
+  real(kind=fp_kind), allocatable :: overlap(:,:)
+  real(kind=fp_kind), allocatable :: crossCorr(:,:)
+
   integer(kind=4) :: IndexW, IndexS, IndexB
-  integer(kind=4) :: JndexS
+  integer(kind=4) :: JndexW, JndexS
 
   write(6,'(1X,A)')'Number of simulations:'
   read*,nSimulations
@@ -59,6 +62,8 @@ program MBAR_caller
   allocate(reducedEnergies(totalNumSnapshots,nSimulations))
   allocate(nSnapshotsInSimulation(nSimulations))
   allocate(freeEnergies(nSimulations))
+  allocate(crossCorr(nSimulations,nSimulations))
+  allocate(overlap(nSimulations,nSimulations))
   forall(IndexW = 1:nSimulations, JndexS = 1: totalNumSnapshots) &
     & reducedEnergies(JndexS,IndexW) = simulatedReducedHamiltonian(IndexW)%reducedEnergies(jndexS)
   forall(IndexW = 1:nSimulations) nSnapshotsInSimulation(IndexW) = simulatedReducedHamiltonian(IndexW)%nOwnSnapshots
@@ -83,12 +88,39 @@ program MBAR_caller
   end do  
 
   forall(IndexW = 1 : nSimulations)simulatedReducedHamiltonian(IndexW)%weights(:) = weights(:, IndexW)
+
+  do IndexW = 1, nSimulations
+    do JndexW = IndexW, nSimulations
+      crossCorr(IndexW, JndexW) = crossCorrelationBetweenHs(totalNumSnapshots, & 
+                 & simulatedReducedHamiltonian(IndexW)%weights, &
+                 & simulatedReducedHamiltonian(JndexW)%weights)
+      crossCorr(JndexW, IndexW) = crossCorr(IndexW, JndexW)
+      overlap(IndexW, JndexW) = MobleyOverlap(totalNumSnapshots, simulatedReducedHamiltonian(IndexW)%ownSimulation%nSnapshots, &
+                 & simulatedReducedHamiltonian(IndexW)%weights, &
+                 & simulatedReducedHamiltonian(JndexW)%weights)
+      overlap(JndexW, IndexW) = MobleyOverlap(totalNumSnapshots, simulatedReducedHamiltonian(JndexW)%ownSimulation%nSnapshots, &
+                 & simulatedReducedHamiltonian(JndexW)%weights, &
+                 & simulatedReducedHamiltonian(IndexW)%weights)
+    end do
+  end do
+  write(6,'(A)') 'Mobley overlap matrix:'
+  do IndexW = 1, nSimulations
+    write(6,'(100F8.3)') overlap(IndexW,:)
+  end do
+  write(6,'(A)') 'Cross correlation between simulations:'
+  do IndexW = 1, nSimulations
+    write(6,'(100F8.3)') crossCorr(IndexW,:)
+  end do
   deallocate(weights)
   deallocate(covFreeEnergies)
+  deallocate(crossCorr)
+  deallocate(overlap)
 
   allocate(weights(totalNumSnapshots,nSimulations+1))
   allocate(targetReducedEnergies(totalNumSnapshots))
-
+  allocate(crossCorr(nSimulations,1))
+  allocate(overlap(nSimulations,1))
+  
 ! gather data for a target Hamiltonian
   call targetReducedHamiltonian%init(targetBeta, totalNumSnapshots, 0)
   call targetReducedHamiltonian%processTrajectories(coordonly=.true.)
@@ -113,8 +145,25 @@ program MBAR_caller
         &  targetReducedHamiltonian%snapshots(IndexS)%coordinate, IndexS = 1, totalNumSnapshots)
   close(id_target_weights_file)
 
+  do IndexW = 1, nSimulations
+    overlap(IndexW, 1) = MobleyOverlap(totalNumSnapshots, simulatedReducedHamiltonian(IndexW)%ownSimulation%nSnapshots, &
+        & simulatedReducedHamiltonian(IndexW)%weights, targetReducedHamiltonian%weights)
+    crossCorr(IndexW, 1) = crossCorrelationBetweenHs(totalNumSnapshots, &
+        & simulatedReducedHamiltonian(IndexW)%weights, targetReducedHamiltonian%weights)
+  end do
+  write(6,'(A)') 'Mobley overlap between the target Hamiltonian and the simulated Hamiltonian'
+  do IndexW = 1, nSimulations
+    write(6,'(F8.3)') overlap(IndexW, 1)
+  end do
+  write(6,'(A)') 'Cross correlation between the target Hamiltonian and the simulated Hamiltonian'
+  do IndexW = 1, nSimulations
+    write(6,'(F8.3)') crossCorr(IndexW, 1)
+  end do
+
   deallocate(weights)
   deallocate(nSnapshotsInSimulation)
+  deallocate(overlap)
+  deallocate(crossCorr)
 
 ! Compute PMF for the target Hamiltonian
   call initbins()
