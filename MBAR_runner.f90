@@ -8,6 +8,9 @@ program MBAR_caller
   
   real(kind=fp_kind) :: targetBeta=1.d0/(298*kB)
 
+  integer(kind=4) :: nbins
+  real(kind=fp_kind) :: binmin, binmax
+
   real(kind=fp_kind), allocatable :: reducedEnergies(:,:)
   real(kind=fp_kind), allocatable :: freeEnergies(:)
   real(kind=fp_kind), allocatable :: targetReducedEnergies(:)
@@ -167,11 +170,10 @@ program MBAR_caller
   deallocate(crossCorr)
 
 ! Compute PMF for the target Hamiltonian
-  call initbins()
-  call targetReducedHamiltonian%computePMF()
+  call targetReducedHamiltonian%computePMF(nbins, binmin, binmax)
 
 ! bootstrapping for the calculations of STD Err for PMF
-  call targetReducedHamiltonian%bootstrap(100)
+  call targetReducedHamiltonian%bootstrap(nbins, binmin, binmax, 100)
 
 ! delete data space
   do IndexW = 1, nSimulations
@@ -179,7 +181,6 @@ program MBAR_caller
   end do
   call targetReducedHamiltonian%destroy()
   call deleteSimulationInfo()
-  call deleteBinInfo()
 
   if(allocated(simulatedReducedHamiltonian))deallocate(simulatedReducedHamiltonian)
   if(allocated(reducedEnergies))deallocate(reducedEnergies)

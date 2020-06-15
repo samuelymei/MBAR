@@ -109,7 +109,7 @@ module reducedHamiltonian_m
       if(allocated(this%weightsSE))deallocate(this%weightsSE)
     end subroutine destroy
 
-    subroutine computePMF(this)
+    subroutine computePMF(this, nbins, binmin, binmax)
       use io_m
       use precision_m
       use bin_m
@@ -117,16 +117,24 @@ module reducedHamiltonian_m
       use simulation_m
       implicit none
       class(reducedHamiltonian_t) :: this
+      integer(kind=4), intent(in) :: nbins
+      real(kind=fp_kind), intent(in) :: binmin, binmax
+
+      type (binCollection_t) :: coordBins
       real(kind=fp_kind), allocatable :: extWeights(:,:)
       real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
       integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
       real(kind=fp_kind), allocatable :: weights4smoothing(:)
+
+     
       integer(kind=4) :: IndexW, IndexS, IndexB
       integer(kind=4) :: JndexS
+     
+      call coordBins%initbins(binmin, binmax, nbins)
 
-      allocate(extWeights(totalNumSnapshots,nSimulations+nbins))
-      allocate(extCovFreeEnergies(nSimulations+nbins,nSimulations+nbins))
-      allocate(extNSnapshotsInSimulation(nSimulations+nbins))
+      allocate(extWeights(totalNumSnapshots,nSimulations+coordBins%nbins))
+      allocate(extCovFreeEnergies(nSimulations+nbins,nSimulations+coordBins%nbins))
+      allocate(extNSnapshotsInSimulation(nSimulations+coordBins%nbins))
       allocate(weights4smoothing(totalNumSnapshots))
       extWeights = 0.d0
       forall(IndexW = 1 : nSimulations)extWeights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
@@ -138,75 +146,80 @@ module reducedHamiltonian_m
 ! 1/(\sum_{k=1}^K N_k exp(f_k-U_k(x))) works similar to the density-of-states
 ! we can Gaussian-smooth the distribution of density-of-states to reduce the
 ! probabilities of some low energy configurations
-      do IndexB = 1, nbins
+      do IndexB = 1, coordBins%nbins
         weights4smoothing = 0.d0
         do IndexS = 1, totalNumSnapshots
-          if(int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1 /= IndexB) cycle
+          if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
           weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
         end do
         call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing)
         do IndexS = 1, totalNumSnapshots
-          if(int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1 /= IndexB) cycle
+          if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
           this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
         end do
       end do
 
 ! Compute the PMF
-      bins(:)%pmf = 0.d0
-      bins(:)%pmfSE = 0.d0
-      bins(:)%reweightingEntropy = 0.d0
-      bins(:)%nSnapshotsInBin = 0 
-      bins(:)%sumOfWeightsInBin = 0.d0
+      coordBins%bins(:)%pmf = 0.d0
+      coordBins%bins(:)%pmfSE = 0.d0
+      coordBins%bins(:)%reweightingEntropy = 0.d0
+      coordBins%bins(:)%nSnapshotsInBin = 0 
+      coordBins%bins(:)%sumOfWeightsInBin = 0.d0
       do IndexS = 1, totalNumSnapshots
-        IndexB = int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
-        if(IndexB > nbins .or. IndexB < 1) cycle
+        IndexB = int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1
+        if(IndexB > coordBins%nbins .or. IndexB < 1) cycle
         extWeights(IndexS,nSimulations+IndexB) = this%weights(IndexS)
-        bins(IndexB)%pmf = bins(IndexB)%pmf + this%weights(IndexS)
-        bins(IndexB)%reweightingEntropy = bins(IndexB)%reweightingEntropy + &
+        coordBins%bins(IndexB)%pmf = coordBins%bins(IndexB)%pmf + this%weights(IndexS)
+        coordBins%bins(IndexB)%reweightingEntropy = coordBins%bins(IndexB)%reweightingEntropy + &
           & this%weights(IndexS)*log(this%weights(IndexS))
-        bins(IndexB)%nSnapshotsInBin = bins(IndexB)%nSnapshotsInBin + 1
-        bins(IndexB)%sumOfWeightsInBin = bins(IndexB)%sumOfWeightsInBin + &
+        coordBins%bins(IndexB)%nSnapshotsInBin = coordBins%bins(IndexB)%nSnapshotsInBin + 1
+        coordBins%bins(IndexB)%sumOfWeightsInBin = coordBins%bins(IndexB)%sumOfWeightsInBin + &
           & this%weights(IndexS)
       end do
   
-
 ! Compute the variances of the PMF
-      forall(IndexB = 1 : nbins) extWeights(:,nSimulations+IndexB) = &
+      forall(IndexB = 1 : coordBins%nbins) extWeights(:,nSimulations+IndexB) = &
             & extWeights(:,nSimulations+IndexB)/sum(extWeights(:,nSimulations+IndexB))
   
-      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations+nbins,extNSnapshotsInSimulation,extWeights,extCovFreeEnergies)
+      call ComputCovMatFromWeights(totalNumSnapshots,nSimulations+coordBins%nbins,extNSnapshotsInSimulation,extWeights, &
+            & extCovFreeEnergies)
   
-      bins(:)%pmf = -log(bins(:)%pmf)
-      bins(:)%pmf = bins(:)%pmf - bins(1)%pmf
-      forall(IndexB=1:nbins) bins(IndexB)%pmfSE = &
+      coordBins%bins(:)%pmf = -log(coordBins%bins(:)%pmf)
+      coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(1)%pmf
+      forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
           & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
               &  + extCovFreeEnergies(nSimulations+1,nSimulations+1) &
             &    - 2*extCovFreeEnergies(nSimulations+1,nSimulations+IndexB) )
-      bins(:)%reweightingEntropy = -(bins(:)%reweightingEntropy/bins(:)%sumOfWeightsInBin-log(bins(:)%sumOfWeightsInBin)) &
-           & /log(dble(bins(:)%nSnapshotsInBin))
+      coordBins%bins(:)%reweightingEntropy = -(coordBins%bins(:)%reweightingEntropy/coordBins%bins(:)%sumOfWeightsInBin &
+            & -log(coordBins%bins(:)%sumOfWeightsInBin)) /log(dble(coordBins%bins(:)%nSnapshotsInBin))
+            
       open(id_target_pmf_file , file = targetHamiltonianPmfFile)
       write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian (kcal/mol)'
-      do IndexB = 1, nbins
-        write(id_target_pmf_file,'(F8.3,3F9.3)')bins(IndexB)%bincenter, bins(IndexB)%pmf/this%beta, &
-             & bins(IndexB)%pmfSE/this%beta, bins(IndexB)%reweightingEntropy
-        write(6,'(F8.3,3F9.3)')bins(IndexB)%bincenter, bins(IndexB)%pmf/this%beta, &
-             & bins(IndexB)%pmfSE/this%beta, bins(IndexB)%reweightingEntropy
+      do IndexB = 1, coordBins%nbins
+        write(id_target_pmf_file,'(F8.3,3F9.3)')coordBins%bins(IndexB)%bincenter, coordBins%bins(IndexB)%pmf/this%beta, &
+             & coordBins%bins(IndexB)%pmfSE/this%beta, coordBins%bins(IndexB)%reweightingEntropy
+        write(6,'(F8.3,3F9.3)')coordBins%bins(IndexB)%bincenter, coordBins%bins(IndexB)%pmf/this%beta, &
+             & coordBins%bins(IndexB)%pmfSE/this%beta, coordBins%bins(IndexB)%reweightingEntropy
       end do
       close(id_target_pmf_file)
       deallocate(extWeights)
       deallocate(extNSnapshotsInSimulation)
       deallocate(extCovFreeEnergies)
       deallocate(weights4smoothing)
+      call coordBins%deleteBinInfo()
     end subroutine computePMF
 
-    subroutine bootstrap(this,nresamples)
+    subroutine bootstrap(this, nbins, binmin, binmax, nresamples)
       use random_m
       use bin_m
       implicit none
       class (reducedHamiltonian_t) :: this
+      integer(kind=4), intent(in) :: nbins
+      real(kind=fp_kind), intent(in) :: binmin, binmax
       integer(kind=4), intent(in) :: nresamples
       real(kind=fp_kind) :: pmf(nbins), pmfSE(nbins)
  
+      type (binCollection_t) :: coordBins
       real(kind=fp_kind), allocatable :: accumulatedWeights(:)
       real(kind=fp_kind), allocatable :: pmfResampled(:,:)
       real(kind=fp_kind), allocatable :: weightsResampled(:,:)
@@ -228,9 +241,10 @@ module reducedHamiltonian_m
       forall(IndexS = 1 : this%TotalNumSnapshots) accumulatedWeights(IndexS) = sum(this%weights(1:IndexS))
       accumulatedWeights(this%TotalNumSnapshots) = 1.d0
 
-      forall(IndexB = 1 : nbins) bins(IndexB)%bincenter = binmin + (IndexB-0.5)*binwidth
+      call coordBins%initbins(binmin, binmax, nbins)
+!      forall(IndexB = 1 : nbins) coordBins%bins(IndexB)%bincenter = binmin + (IndexB-0.5)*binwidth
       forall(IndexS = 1 : this%TotalNumSnapshots) &
-         & idBinOrigin(IndexS) = int((this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1
+         & idBinOrigin(IndexS) = int((this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1
 
       pmfResampled = 0.d0
       do IndexR = 1, nresamples
@@ -245,7 +259,7 @@ module reducedHamiltonian_m
           weightsResampled(IndexS,IndexR) = this%weights(irand)
         end do
         do IndexS = 1, this%TotalNumSnapshots
-          if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) <= nbins)then
+          if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) <= coordBins%nbins)then
             pmfResampled(idBinResampled(IndexS,IndexR),IndexR) = & 
                & pmfResampled(idBinResampled(IndexS,IndexR),IndexR) + weightsResampled(IndexS,IndexR)
           end if
@@ -254,15 +268,15 @@ module reducedHamiltonian_m
       pmfResampled = -log(pmfResampled)
       forall( IndexR = 1 : nresamples) &
         & pmfResampled(:,IndexR) = pmfResampled(:,IndexR) - pmfResampled(1,IndexR)
-      do IndexB = 1, nbins
+      do IndexB = 1, coordBins%nbins
         pmf(IndexB) = sum(pmfResampled(IndexB,:))/nresamples
         pmfSE(IndexB) = sqrt(sum((pmfResampled(IndexB,:)-pmf(IndexB))**2)/nresamples)
       end do
       pmf = pmf - pmf(1)
 
       write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian from bootstrapping (kcal/mol)'
-      do IndexB = 1, nbins
-        write(6,'(F8.3,2F9.3)')bins(IndexB)%bincenter, pmf(IndexB)/targetReducedHamiltonian%beta, &
+      do IndexB = 1, coordBins%nbins
+        write(6,'(F8.3,2F9.3)')coordBins%bins(IndexB)%bincenter, pmf(IndexB)/targetReducedHamiltonian%beta, &
             & pmfSE(IndexB)/targetReducedHamiltonian%beta
       end do
       deallocate(accumulatedWeights)
@@ -270,6 +284,7 @@ module reducedHamiltonian_m
       deallocate(idBinResampled)
       deallocate(weightsResampled)
       deallocate(pmfResampled)
+      call coordBins%deleteBinInfo()
     end subroutine bootstrap
 
     function MobleyOverlap(n,n1,weights1,weights2) result(overlap)
@@ -306,8 +321,8 @@ module reducedHamiltonian_m
       real(kind=fp_kind), intent(in) :: energies(n)
       real(kind=fp_kind), intent(in out) :: weights(n)
 
-      integer(kind=4) :: nEnergyBins
-      type (bin_t), allocatable :: energyBins(:)
+      type (binCollection_t) :: energyBins
+
       integer(kind=4), allocatable :: binID(:)
       real(kind=fp_kind) :: minE, maxE, width
       integer(kind=4) :: IndexB, IndexS
@@ -318,33 +333,32 @@ module reducedHamiltonian_m
       minE = minval(energies(:))-1.0E-10
       maxE = maxval(energies(:))+1.0E-10
       width = 0.1d0
-      nEnergyBins = int((maxE - minE)/width)+1
-      allocate(energyBins(nEnergyBins))
-      energyBins(:)%binwidth = width
-      forall(IndexB = 1 : nEnergyBins) energyBins(IndexB)%bincenter = minE + (IndexB - 0.5d0)*width
-
+      call energyBins%initbins2(minE, maxE, width)
       allocate(binID(n))
-      allocate(scaleFactor(nEnergyBins))
-      allocate(gaussianCumulative(nEnergyBins))
+      allocate(scaleFactor(energyBins%nbins))
+      allocate(gaussianCumulative(energyBins%nbins))
 
 ! compute histogram from fractional weights
-      energyBins(:)%sumOfWeightsInBin = 0.d0
+      energyBins%bins(:)%sumOfWeightsInBin = 0.d0
       do IndexS = 1, n
-        binID(IndexS) = int(( energies(IndexS) - minE )/width) + 1
-        energyBins(binID(IndexS))%sumOfWeightsInBin = energyBins(binID(IndexS))%sumOfWeightsInBin &
+        binID(IndexS) = int(( energies(IndexS) - energyBins%binmin )/energyBins%binwidth) + 1
+        energyBins%bins(binID(IndexS))%sumOfWeightsInBin = energyBins%bins(binID(IndexS))%sumOfWeightsInBin &
            & + weights(IndexS)
       end do
-      call Weighted_Mean_and_StandardDev(n, weights(:), energies(:), meanE, sigmaE)
+      call Weighted_Mean_and_StandardDev(n, weights, energies, meanE, sigmaE)
 
-      forall(IndexB = 1:nEnergyBins) &
-        gaussianCumulative(IndexB) = cumulative_gaussian(meanE, sigmaE, energyBins(IndexB)%bincenter + energyBins(IndexB)%binwidth/2) &
-                &                  - cumulative_gaussian(meanE, sigmaE, energyBins(IndexB)%bincenter - energyBins(IndexB)%binwidth/2)
-      gaussianCumulative(:) = gaussianCumulative(:) * maxval(energyBins(:)%sumOfWeightsInBin)/(gaussian(meanE, sigmaE, meanE)*width)
+      forall(IndexB = 1:energyBins%nbins) gaussianCumulative(IndexB) = &
+         &   cumulative_gaussian(meanE, sigmaE, & 
+                               & energyBins%bins(IndexB)%bincenter + energyBins%bins(IndexB)%binwidth/2) &
+         & - cumulative_gaussian(meanE, sigmaE, & 
+                               & energyBins%bins(IndexB)%bincenter - energyBins%bins(IndexB)%binwidth/2)
+      gaussianCumulative(:) = gaussianCumulative(:) &
+                & * maxval(energyBins%bins(:)%sumOfWeightsInBin)/(gaussian(meanE, sigmaE, meanE)*energyBins%binwidth)
 
       scaleFactor = 1.d0
-      do IndexB = 1, nEnergyBins
-        if(energyBins(IndexB)%sumOfWeightsInBin > 0.d0) then
-          scaleFactor(IndexB) = gaussianCumulative(IndexB) / energyBins(IndexB)%sumOfWeightsInBin
+      do IndexB = 1, energyBins%nbins
+        if(energyBins%bins(IndexB)%sumOfWeightsInBin > 0.d0) then
+          scaleFactor(IndexB) = gaussianCumulative(IndexB) / energyBins%bins(IndexB)%sumOfWeightsInBin
         end if
       end do
 
@@ -352,10 +366,10 @@ module reducedHamiltonian_m
         weights(IndexS) = weights(IndexS) * scaleFactor(binID(IndexS))
       end do
 
+      call energyBins%deleteBinInfo()
       deallocate(binID)
       deallocate(scaleFactor)
       deallocate(gaussianCumulative)
-      deallocate(energyBins)
       contains
         function gaussian(x0,sigma,x)
           use precision_m
