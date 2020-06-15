@@ -1,4 +1,5 @@
 # MBAR (Multistate Bennett Acceptance Ratio)
+  Written by Ye Mei (https://qclassic.wordpress.com)
 
 ## Control options are read from the std input
 
