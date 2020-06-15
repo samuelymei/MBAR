@@ -139,6 +139,7 @@ program MBAR_caller
            & targetReducedHamiltonian%freeenergySD/targetReducedHamiltonian%beta
 
   targetReducedHamiltonian%weights(:) = weights(:,nSimulations+1)
+
   open(id_target_weights_file, file = targetWeightsFile)
   write(id_target_weights_file,'(I8,E12.5,1X,F10.5)')(IndexS, &
         &  targetReducedHamiltonian%weights(IndexS)/sum(targetReducedHamiltonian%weights(:)), &

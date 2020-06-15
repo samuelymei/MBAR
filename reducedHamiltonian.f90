@@ -120,17 +120,38 @@ module reducedHamiltonian_m
       real(kind=fp_kind), allocatable :: extWeights(:,:)
       real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
       integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
+      real(kind=fp_kind), allocatable :: weights4smoothing(:)
       integer(kind=4) :: IndexW, IndexS, IndexB
       integer(kind=4) :: JndexS
 
       allocate(extWeights(totalNumSnapshots,nSimulations+nbins))
       allocate(extCovFreeEnergies(nSimulations+nbins,nSimulations+nbins))
       allocate(extNSnapshotsInSimulation(nSimulations+nbins))
-
+      allocate(weights4smoothing(totalNumSnapshots))
       extWeights = 0.d0
       forall(IndexW = 1 : nSimulations)extWeights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
       extNSnapshotsInSimulation = 0
       forall(IndexW = 1 : nSimulations)extNSnapshotsInSimulation(IndexW) = simulatedReducedHamiltonian(IndexW)%nOwnSnapshots
+
+! run Gaussian smoothing to the distribution of the energies 
+! On the right-hand side of the MBAR working equation, 
+! 1/(\sum_{k=1}^K N_k exp(f_k-U_k(x))) works similar to the density-of-states
+! we can Gaussian-smooth the distribution of density-of-states to reduce the
+! probabilities of some low energy configurations
+      do IndexB = 1, nbins
+        weights4smoothing = 0.d0
+        do IndexS = 1, totalNumSnapshots
+          if(int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1 /= IndexB) cycle
+          weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
+        end do
+        call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing)
+        do IndexS = 1, totalNumSnapshots
+          if(int(( this%snapshots(IndexS)%coordinate - binmin )/binwidth) + 1 /= IndexB) cycle
+          this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
+        end do
+      end do
+
+! Compute the PMF
       bins(:)%pmf = 0.d0
       bins(:)%pmfSE = 0.d0
       bins(:)%reweightingEntropy = 0.d0
@@ -148,6 +169,8 @@ module reducedHamiltonian_m
           & this%weights(IndexS)
       end do
   
+
+! Compute the variances of the PMF
       forall(IndexB = 1 : nbins) extWeights(:,nSimulations+IndexB) = &
             & extWeights(:,nSimulations+IndexB)/sum(extWeights(:,nSimulations+IndexB))
   
@@ -173,7 +196,7 @@ module reducedHamiltonian_m
       deallocate(extWeights)
       deallocate(extNSnapshotsInSimulation)
       deallocate(extCovFreeEnergies)
-
+      deallocate(weights4smoothing)
     end subroutine computePMF
 
     subroutine bootstrap(this,nresamples)
@@ -275,4 +298,81 @@ module reducedHamiltonian_m
       workWeights2(:) = workWeights2(:) / sum(workWeights2(:))
       cc = cross_correlation(n,workWeights1,workWeights2)
     end function crossCorrelationBetweenHs
+
+    subroutine GaussianSmoothing(n,energies,weights)
+      use bin_m
+      implicit none
+      integer(kind=4), intent(in) :: n
+      real(kind=fp_kind), intent(in) :: energies(n)
+      real(kind=fp_kind), intent(in out) :: weights(n)
+
+      integer(kind=4) :: nEnergyBins
+      type (bin_t), allocatable :: energyBins(:)
+      integer(kind=4), allocatable :: binID(:)
+      real(kind=fp_kind) :: minE, maxE, width
+      integer(kind=4) :: IndexB, IndexS
+      real(kind=fp_kind) :: meanE, sigmaE
+      real(kind=fp_kind), allocatable :: scaleFactor(:)
+      real(kind=fp_kind), allocatable :: gaussianCumulative(:)
+! initialize bins 
+      minE = minval(energies(:))-1.0E-10
+      maxE = maxval(energies(:))+1.0E-10
+      width = 0.1d0
+      nEnergyBins = int((maxE - minE)/width)+1
+      allocate(energyBins(nEnergyBins))
+      energyBins(:)%binwidth = width
+      forall(IndexB = 1 : nEnergyBins) energyBins(IndexB)%bincenter = minE + (IndexB - 0.5d0)*width
+
+      allocate(binID(n))
+      allocate(scaleFactor(nEnergyBins))
+      allocate(gaussianCumulative(nEnergyBins))
+
+! compute histogram from fractional weights
+      energyBins(:)%sumOfWeightsInBin = 0.d0
+      do IndexS = 1, n
+        binID(IndexS) = int(( energies(IndexS) - minE )/width) + 1
+        energyBins(binID(IndexS))%sumOfWeightsInBin = energyBins(binID(IndexS))%sumOfWeightsInBin &
+           & + weights(IndexS)
+      end do
+      call Weighted_Mean_and_StandardDev(n, weights(:), energies(:), meanE, sigmaE)
+
+      forall(IndexB = 1:nEnergyBins) &
+        gaussianCumulative(IndexB) = cumulative_gaussian(meanE, sigmaE, energyBins(IndexB)%bincenter + energyBins(IndexB)%binwidth/2) &
+                &                  - cumulative_gaussian(meanE, sigmaE, energyBins(IndexB)%bincenter - energyBins(IndexB)%binwidth/2)
+      gaussianCumulative(:) = gaussianCumulative(:) * maxval(energyBins(:)%sumOfWeightsInBin)/(gaussian(meanE, sigmaE, meanE)*width)
+
+      scaleFactor = 1.d0
+      do IndexB = 1, nEnergyBins
+        if(energyBins(IndexB)%sumOfWeightsInBin > 0.d0) then
+          scaleFactor(IndexB) = gaussianCumulative(IndexB) / energyBins(IndexB)%sumOfWeightsInBin
+        end if
+      end do
+
+      do IndexS = 1, n
+        weights(IndexS) = weights(IndexS) * scaleFactor(binID(IndexS))
+      end do
+
+      deallocate(binID)
+      deallocate(scaleFactor)
+      deallocate(gaussianCumulative)
+      deallocate(energyBins)
+      contains
+        function gaussian(x0,sigma,x)
+          use precision_m
+          implicit none
+          real(kind=fp_kind) :: gaussian
+          real(kind=fp_kind), intent(in) :: x0,sigma,x
+          real(kind=fp_kind) :: pi
+          pi = atan(1.0d0)*4.0d0
+          gaussian = 1.d0/(sqrt(2*pi)*sigma)*exp(-(x-x0)**2/(2*sigma**2))
+        end function gaussian
+
+        pure function cumulative_gaussian(x0,sigma,x)
+          implicit none
+          real(kind=fp_kind) :: cumulative_gaussian
+          real(kind=fp_kind), intent(in) :: x0,sigma,x
+          real(kind=fp_kind) :: pi
+          cumulative_gaussian = 0.5d0*(1+erf((x-x0)/(sqrt(2.d0)*sigma)))
+        end function cumulative_gaussian
+    end subroutine GaussianSmoothing
 end module reducedHamiltonian_m

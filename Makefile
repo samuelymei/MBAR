@@ -1,7 +1,7 @@
 .SUFFIXES: 
 .SUFFIXES: .f90 .o
 
-FC = gfortran
+FC = ifort
 FFLAGS = -O2
 INCLUDE = 
 MKL_HOME=/home/ymei/softwares/intel/mkl
