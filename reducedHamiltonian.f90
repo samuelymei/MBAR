@@ -109,7 +109,7 @@ module reducedHamiltonian_m
       if(allocated(this%weightsSE))deallocate(this%weightsSE)
     end subroutine destroy
 
-    subroutine computePMF(this, nbins, binmin, binmax)
+    subroutine computePMF(this, nbins, binmin, binmax, iGaussSmooth)
       use io_m
       use precision_m
       use bin_m
@@ -119,13 +119,13 @@ module reducedHamiltonian_m
       class(reducedHamiltonian_t) :: this
       integer(kind=4), intent(in) :: nbins
       real(kind=fp_kind), intent(in) :: binmin, binmax
+      integer(kind=4), intent(in), optional :: iGaussSmooth
 
       type (binCollection_t) :: coordBins
       real(kind=fp_kind), allocatable :: extWeights(:,:)
       real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
       integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
       real(kind=fp_kind), allocatable :: weights4smoothing(:)
-
      
       integer(kind=4) :: IndexW, IndexS, IndexB
       integer(kind=4) :: JndexS
@@ -146,22 +146,23 @@ module reducedHamiltonian_m
 ! 1/(\sum_{k=1}^K N_k exp(f_k-U_k(x))) works similar to the density-of-states
 ! we can Gaussian-smooth the distribution of density-of-states to reduce the
 ! probabilities of some low energy configurations
-      do IndexB = 1, coordBins%nbins
-        weights4smoothing = 0.d0
-        do IndexS = 1, totalNumSnapshots
-          if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
-          weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
+      if(present(iGaussSmooth) .and. iGaussSmooth > 0) then
+        write(6,'(A)')'Perform Gaussian smoothing on the energy distribution in each bin'
+        do IndexB = 1, coordBins%nbins
+          weights4smoothing = 0.d0
+          do IndexS = 1, totalNumSnapshots
+            if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
+            weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
+          end do
+          call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing)
+          do IndexS = 1, totalNumSnapshots
+            if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
+            this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
+          end do
         end do
-        call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing)
-        do IndexS = 1, totalNumSnapshots
-          if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
-          this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
-        end do
-      end do
+      end if
 
 ! Compute the PMF
-      coordBins%bins(:)%pmf = 0.d0
-      coordBins%bins(:)%pmfSE = 0.d0
       coordBins%bins(:)%reweightingEntropy = 0.d0
       coordBins%bins(:)%nSnapshotsInBin = 0 
       coordBins%bins(:)%sumOfWeightsInBin = 0.d0
@@ -169,13 +170,13 @@ module reducedHamiltonian_m
         IndexB = int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1
         if(IndexB > coordBins%nbins .or. IndexB < 1) cycle
         extWeights(IndexS,nSimulations+IndexB) = this%weights(IndexS)
-        coordBins%bins(IndexB)%pmf = coordBins%bins(IndexB)%pmf + this%weights(IndexS)
         coordBins%bins(IndexB)%reweightingEntropy = coordBins%bins(IndexB)%reweightingEntropy + &
           & this%weights(IndexS)*log(this%weights(IndexS))
         coordBins%bins(IndexB)%nSnapshotsInBin = coordBins%bins(IndexB)%nSnapshotsInBin + 1
         coordBins%bins(IndexB)%sumOfWeightsInBin = coordBins%bins(IndexB)%sumOfWeightsInBin + &
           & this%weights(IndexS)
       end do
+      coordBins%bins(:)%pmf = coordBins%bins(:)%sumOfWeightsInBin / coordBins%bins(:)%binwidth
   
 ! Compute the variances of the PMF
       forall(IndexB = 1 : coordBins%nbins) extWeights(:,nSimulations+IndexB) = &

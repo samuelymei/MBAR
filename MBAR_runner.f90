@@ -10,6 +10,7 @@ program MBAR_caller
 
   integer(kind=4) :: nbins
   real(kind=fp_kind) :: binmin, binmax
+  integer(kind=4) :: iGaussSmooth
 
   real(kind=fp_kind), allocatable :: reducedEnergies(:,:)
   real(kind=fp_kind), allocatable :: freeEnergies(:)
@@ -42,7 +43,8 @@ program MBAR_caller
   read*,targetHamiltonianPmfFile
   write(6,'(1X,A)')'Name of the out file containing the weights of the target Hamiltonian:'
   read*, targetWeightsFile
-
+  write(6,'(1X,A)')'Perform Gaussian smoothing on the data? 0: No. 1: Yes.'
+  read*,iGaussSmooth
 
   open(id_meta_file,file= trim(metaFile))
   call readSimulationInfo()
@@ -170,7 +172,7 @@ program MBAR_caller
   deallocate(crossCorr)
 
 ! Compute PMF for the target Hamiltonian
-  call targetReducedHamiltonian%computePMF(nbins, binmin, binmax)
+  call targetReducedHamiltonian%computePMF(nbins, binmin, binmax, iGaussSmooth)
 
 ! bootstrapping for the calculations of STD Err for PMF
   call targetReducedHamiltonian%bootstrap(nbins, binmin, binmax, 100)
