@@ -196,6 +196,8 @@ module reducedHamiltonian_m
             
       open(id_target_pmf_file , file = targetHamiltonianPmfFile)
       write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian (kcal/mol)'
+      write(6,'(1X,A)')'    RC       f        df'
+      write(id_target_pmf_file,'(1X,A)')'#   RC       f        df'
       do IndexB = 1, coordBins%nbins
         write(id_target_pmf_file,'(F8.3,3F9.3)')coordBins%bins(IndexB)%bincenter, coordBins%bins(IndexB)%pmf/this%beta, &
              & coordBins%bins(IndexB)%pmfSE/this%beta, coordBins%bins(IndexB)%reweightingEntropy
@@ -276,6 +278,7 @@ module reducedHamiltonian_m
       pmf = pmf - pmf(1)
 
       write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian from bootstrapping (kcal/mol)'
+      write(6,'(1X,A)')'    RC       f        df'
       do IndexB = 1, coordBins%nbins
         write(6,'(F8.3,2F9.3)')coordBins%bins(IndexB)%bincenter, pmf(IndexB)/targetReducedHamiltonian%beta, &
             & pmfSE(IndexB)/targetReducedHamiltonian%beta
@@ -353,8 +356,9 @@ module reducedHamiltonian_m
                                & energyBins%bins(IndexB)%bincenter + energyBins%bins(IndexB)%binwidth/2) &
          & - cumulative_gaussian(meanE, sigmaE, & 
                                & energyBins%bins(IndexB)%bincenter - energyBins%bins(IndexB)%binwidth/2)
-      gaussianCumulative(:) = gaussianCumulative(:) &
-                & * maxval(energyBins%bins(:)%sumOfWeightsInBin)/(gaussian(meanE, sigmaE, meanE)*energyBins%binwidth)
+!      gaussianCumulative(:) = gaussianCumulative(:) &
+!                & * maxval(energyBins%bins(:)%sumOfWeightsInBin)/(gaussian(meanE, sigmaE, meanE)*energyBins%binwidth)
+      gaussianCumulative(:) = gaussianCumulative(:) * sum(energyBins%bins(:)%sumOfWeightsInBin)
 
       scaleFactor = 1.d0
       do IndexB = 1, energyBins%nbins
