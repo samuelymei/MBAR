@@ -46,7 +46,7 @@ program MBAR_caller
   write(6,'(1X,A)')'Perform Gaussian smoothing on the data? 0: No. 1: Yes.'
   read*,iGaussSmooth
 
-  open(id_meta_file,file= trim(metaFile))
+  open( id_meta_file, file = trim(metaFile), status = 'old')
   call readSimulationInfo()
   write(6,'(1X,A,I4,A,I8)')'Number of simulations:', nSimulations, '   Total Number of snapshots:', totalNumSnapshots
   close(id_meta_file)
@@ -129,13 +129,14 @@ program MBAR_caller
 ! gather data for a target Hamiltonian
   call targetReducedHamiltonian%init(targetBeta, totalNumSnapshots, 0)
   call targetReducedHamiltonian%processTrajectories(coordonly=.true.)
-  open(id_target_energy_file, file = trim(targetHamiltonianEnergyFile))
+  open( id_target_energy_file, file = trim(targetHamiltonianEnergyFile), status = 'old')
   call targetReducedHamiltonian%readInEnergy(id_target_energy_file)
   close(id_target_energy_file)
 
 ! compute weight for each sample under the target Hamiltonian
   targetReducedEnergies = targetReducedHamiltonian%reducedEnergies
   forall(IndexW = 1 : nSimulations) weights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
+  write(6,'(A)') 'Computing weights for all the configurations under the target Hamiltonian'
   call MBAR_weight(nSimulations, totalNumSnapshots, reducedEnergies, nSnapshotsInSimulation, &
            & freeEnergies, targetReducedEnergies, &
            & weights, targetReducedHamiltonian%freeenergy, targetReducedHamiltonian%freeenergySD)

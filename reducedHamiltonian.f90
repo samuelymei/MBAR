@@ -126,6 +126,8 @@ module reducedHamiltonian_m
       real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
       integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
       real(kind=fp_kind), allocatable :: weights4smoothing(:)
+
+      integer(kind=4) :: iDumpHistogram
      
       integer(kind=4) :: IndexW, IndexS, IndexB
       integer(kind=4) :: JndexS
@@ -154,7 +156,11 @@ module reducedHamiltonian_m
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
             weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
           end do
-          call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing)
+          iDumpHistogram = 0
+!          if(IndexB == 88)then
+!            iDumpHistogram = 1
+!          end if
+          call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing,iDumpHistogram)
           do IndexS = 1, totalNumSnapshots
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
             this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
@@ -171,7 +177,7 @@ module reducedHamiltonian_m
         if(IndexB > coordBins%nbins .or. IndexB < 1) cycle
         extWeights(IndexS,nSimulations+IndexB) = this%weights(IndexS)
         coordBins%bins(IndexB)%reweightingEntropy = coordBins%bins(IndexB)%reweightingEntropy + &
-          & this%weights(IndexS)*log(this%weights(IndexS))
+          & this%weights(IndexS)*log(this%weights(IndexS)+1.E-30)
         coordBins%bins(IndexB)%nSnapshotsInBin = coordBins%bins(IndexB)%nSnapshotsInBin + 1
         coordBins%bins(IndexB)%sumOfWeightsInBin = coordBins%bins(IndexB)%sumOfWeightsInBin + &
           & this%weights(IndexS)
@@ -193,7 +199,7 @@ module reducedHamiltonian_m
             &    - 2*extCovFreeEnergies(nSimulations+1,nSimulations+IndexB) )
       coordBins%bins(:)%reweightingEntropy = -(coordBins%bins(:)%reweightingEntropy/coordBins%bins(:)%sumOfWeightsInBin &
             & -log(coordBins%bins(:)%sumOfWeightsInBin)) /log(dble(coordBins%bins(:)%nSnapshotsInBin))
-            
+
       open(id_target_pmf_file , file = targetHamiltonianPmfFile)
       write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian (kcal/mol)'
       write(6,'(1X,A)')'    RC       f        df'
@@ -318,12 +324,13 @@ module reducedHamiltonian_m
       cc = cross_correlation(n,workWeights1,workWeights2)
     end function crossCorrelationBetweenHs
 
-    subroutine GaussianSmoothing(n,energies,weights)
+    subroutine GaussianSmoothing(n,energies,weights,iDumpHistogram)
       use bin_m
       implicit none
       integer(kind=4), intent(in) :: n
       real(kind=fp_kind), intent(in) :: energies(n)
       real(kind=fp_kind), intent(in out) :: weights(n)
+      integer(kind=4), intent(in) :: iDumpHistogram
 
       type (binCollection_t) :: energyBins
 
@@ -349,6 +356,7 @@ module reducedHamiltonian_m
         energyBins%bins(binID(IndexS))%sumOfWeightsInBin = energyBins%bins(binID(IndexS))%sumOfWeightsInBin &
            & + weights(IndexS)
       end do
+
       call Weighted_Mean_and_StandardDev(n, weights, energies, meanE, sigmaE)
 
       forall(IndexB = 1:energyBins%nbins) gaussianCumulative(IndexB) = &
@@ -359,6 +367,14 @@ module reducedHamiltonian_m
 !      gaussianCumulative(:) = gaussianCumulative(:) &
 !                & * maxval(energyBins%bins(:)%sumOfWeightsInBin)/(gaussian(meanE, sigmaE, meanE)*energyBins%binwidth)
       gaussianCumulative(:) = gaussianCumulative(:) * sum(energyBins%bins(:)%sumOfWeightsInBin)
+
+      if(iDumpHistogram==1) then
+         do IndexB = 1, energyBins%nbins
+            write(101,'(3E20.10)')energyBins%bins(IndexB)%bincenter, &
+               & energyBins%bins(IndexB)%sumOfWeightsInBin/sum(energyBins%bins(:)%sumOfWeightsInBin), &
+               & gaussianCumulative(IndexB)/sum(energyBins%bins(:)%sumOfWeightsInBin)
+         end do
+      end if
 
       scaleFactor = 1.d0
       do IndexB = 1, energyBins%nbins
