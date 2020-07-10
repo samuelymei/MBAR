@@ -126,6 +126,7 @@ module reducedHamiltonian_m
       real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
       integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
       real(kind=fp_kind), allocatable :: weights4smoothing(:)
+      integer(kind=4), allocatable :: samplesInThisBin(:)
 
       integer(kind=4) :: iDumpHistogram
      
@@ -138,6 +139,7 @@ module reducedHamiltonian_m
       allocate(extCovFreeEnergies(nSimulations+nbins,nSimulations+coordBins%nbins))
       allocate(extNSnapshotsInSimulation(nSimulations+coordBins%nbins))
       allocate(weights4smoothing(totalNumSnapshots))
+      allocate(samplesInThisBin(totalNumSnapshots))
       extWeights = 0.d0
       forall(IndexW = 1 : nSimulations)extWeights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
       extNSnapshotsInSimulation = 0
@@ -152,15 +154,17 @@ module reducedHamiltonian_m
         write(6,'(A)')'Perform Gaussian smoothing on the energy distribution in each bin'
         do IndexB = 1, coordBins%nbins
           weights4smoothing = 0.d0
+          samplesInThisBin = 0
           do IndexS = 1, totalNumSnapshots
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
             weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
+            samplesInThisBin(IndexS) = 1
           end do
           iDumpHistogram = 0
-!          if(IndexB == 88)then
+!          if(IndexB == 63)then
 !            iDumpHistogram = 1
 !          end if
-          call GaussianSmoothing(totalNumSnapshots,this%reducedEnergies,weights4smoothing,iDumpHistogram)
+          call GaussianSmoothing(totalNumSnapshots,samplesInThisBin,this%reducedEnergies,weights4smoothing,iDumpHistogram)
           do IndexS = 1, totalNumSnapshots
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
             this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
@@ -215,6 +219,7 @@ module reducedHamiltonian_m
       deallocate(extNSnapshotsInSimulation)
       deallocate(extCovFreeEnergies)
       deallocate(weights4smoothing)
+      deallocate(samplesInThisBin)
       call coordBins%deleteBinInfo()
     end subroutine computePMF
 
@@ -324,26 +329,40 @@ module reducedHamiltonian_m
       cc = cross_correlation(n,workWeights1,workWeights2)
     end function crossCorrelationBetweenHs
 
-    subroutine GaussianSmoothing(n,energies,weights,iDumpHistogram)
+    subroutine GaussianSmoothing(n,sampleInBin,energies,weights,iDumpHistogram)
       use bin_m
       implicit none
       integer(kind=4), intent(in) :: n
+      integer(kind=4), intent(in) :: sampleInBin(n)
       real(kind=fp_kind), intent(in) :: energies(n)
       real(kind=fp_kind), intent(in out) :: weights(n)
       integer(kind=4), intent(in) :: iDumpHistogram
 
       type (binCollection_t) :: energyBins
 
+      real(kind=fp_kind), allocatable :: energiesInBin(:)
       integer(kind=4), allocatable :: binID(:)
       real(kind=fp_kind) :: minE, maxE, width
-      integer(kind=4) :: IndexB, IndexS
       real(kind=fp_kind) :: meanE, sigmaE
       real(kind=fp_kind), allocatable :: scaleFactor(:)
       real(kind=fp_kind), allocatable :: gaussianCumulative(:)
+      integer(kind=4) :: IndexB, IndexS
+      integer(kind=4) :: JndexB, JndexS
 ! initialize bins 
-      minE = minval(energies(:))-1.0E-10
-      maxE = maxval(energies(:))+1.0E-10
-      width = 0.1d0
+      allocate(energiesInBin(sum(sampleInBin)))
+      JndexS = 0
+      do IndexS = 1, n
+        if(sampleInBin(IndexS) == 1)then
+          JndexS = JndexS +1
+          energiesInBin(JndexS) = energies(IndexS)
+        end if
+      end do
+
+!      minE = minval(energies(:))-1.0E-10
+!      maxE = maxval(energies(:))+1.0E-10
+      minE = minval(energiesInBin(:))-1.0E-10
+      maxE = maxval(energiesInBin(:))+1.0E-10
+      width = 0.2d0
       call energyBins%initbins2(minE, maxE, width)
       allocate(binID(n))
       allocate(scaleFactor(energyBins%nbins))
@@ -352,12 +371,14 @@ module reducedHamiltonian_m
 ! compute histogram from fractional weights
       energyBins%bins(:)%sumOfWeightsInBin = 0.d0
       do IndexS = 1, n
+        if(sampleInBin(IndexS) /= 1)cycle
         binID(IndexS) = int(( energies(IndexS) - energyBins%binmin )/energyBins%binwidth) + 1
         energyBins%bins(binID(IndexS))%sumOfWeightsInBin = energyBins%bins(binID(IndexS))%sumOfWeightsInBin &
            & + weights(IndexS)
       end do
 
       call Weighted_Mean_and_StandardDev(n, weights, energies, meanE, sigmaE)
+      write(*,'(A,1X,E20.10,1X,A,1X,E20.10)')'Fitted Gaussian mean=', meanE, 'sigma=', sigmaE
 
       forall(IndexB = 1:energyBins%nbins) gaussianCumulative(IndexB) = &
          &   cumulative_gaussian(meanE, sigmaE, & 
@@ -370,9 +391,14 @@ module reducedHamiltonian_m
 
       if(iDumpHistogram==1) then
          do IndexB = 1, energyBins%nbins
-            write(101,'(3E20.10)')energyBins%bins(IndexB)%bincenter, &
+            write(101,'(4E20.10)')energyBins%bins(IndexB)%bincenter, &
                & energyBins%bins(IndexB)%sumOfWeightsInBin/sum(energyBins%bins(:)%sumOfWeightsInBin), &
-               & gaussianCumulative(IndexB)/sum(energyBins%bins(:)%sumOfWeightsInBin)
+               & gaussianCumulative(IndexB)/sum(energyBins%bins(:)%sumOfWeightsInBin),&
+               & gaussianCumulative(IndexB)/sum(energyBins%bins(:)%sumOfWeightsInBin) * exp(-energyBins%bins(IndexB)%bincenter)
+         end do
+         do IndexS = 1, n
+           if(sampleInBin(IndexS) /= 1)cycle
+           write(100,*)IndexS,energies(IndexS)
          end do
       end if
 
@@ -384,6 +410,7 @@ module reducedHamiltonian_m
       end do
 
       do IndexS = 1, n
+        if(sampleInBin(IndexS) /= 1)cycle
         weights(IndexS) = weights(IndexS) * scaleFactor(binID(IndexS))
       end do
 
@@ -391,6 +418,7 @@ module reducedHamiltonian_m
       deallocate(binID)
       deallocate(scaleFactor)
       deallocate(gaussianCumulative)
+      deallocate(energiesInBin)
       contains
         function gaussian(x0,sigma,x)
           use precision_m
