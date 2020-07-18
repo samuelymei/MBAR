@@ -166,6 +166,7 @@ module reducedHamiltonian_m
           if(IndexB == 2)then
             iDumpHistogram = 1
           end if
+          write(6,'(1X,A,I3,A,I)')'Number of samples in Bin', IndexB,' :', sum(samplesInThisBin)
           call GaussianSmoothing(totalNumSnapshots,samplesInThisBin,this%reducedEnergies,weights4smoothing,iDumpHistogram)
           do IndexS = 1, totalNumSnapshots
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
