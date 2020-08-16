@@ -128,7 +128,12 @@ module reducedHamiltonian_m
       real(kind=fp_kind), allocatable :: weights4smoothing(:)
       integer(kind=4), allocatable :: samplesInThisBin(:)
 
+      real(kind=fp_kind), allocatable :: properties(:)
+      real(kind=fp_kind), allocatable :: avgProp(:), stderrProp(:)
+      real(kind=fp_kind), allocatable :: weightSum(:)
+
       integer(kind=4) :: iDumpHistogram
+      integer(kind=4) :: iComputeAvg
      
       integer(kind=4) :: IdxMin
 
@@ -200,20 +205,32 @@ module reducedHamiltonian_m
   
       coordBins%bins(:)%pmf = -log(coordBins%bins(:)%pmf)
 
-     if(present(iGaussSmooth) .and. iGaussSmooth > 0) then
-       IdxMin = minloc(coordBins%bins(:)%pmf,1)
-       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(IdxMin)%pmf
-       forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
+      if(present(iGaussSmooth) .and. iGaussSmooth > 0) then
+!       IdxMin = minloc(coordBins%bins(:)%pmf,1)
+!       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(IdxMin)%pmf
+!       forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
+!           & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
+!               &  + extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IdxMin) &
+!               &  - 2*extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IndexB) )
+
+!       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(coordBins%nbins)%pmf
+!       forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
+!           & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
+!               &  + extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+coordBins%nbins) &
+!               &  - 2*extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+IndexB) )
+
+        coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(1)%pmf
+        forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
            & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
-               &  + extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IdxMin) &
-             &    - 2*extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IndexB) )
-     else
+               &  + extCovFreeEnergies(nSimulations+1,nSimulations+1) &
+               &  - 2*extCovFreeEnergies(nSimulations+1,nSimulations+IndexB) )
+      else
         coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(1)%pmf
         forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
             & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
                 &  + extCovFreeEnergies(nSimulations+1,nSimulations+1) &
               &    - 2*extCovFreeEnergies(nSimulations+1,nSimulations+IndexB) )
-     end if
+      end if
       coordBins%bins(:)%reweightingEntropy = -(coordBins%bins(:)%reweightingEntropy/coordBins%bins(:)%sumOfWeightsInBin &
             & -log(coordBins%bins(:)%sumOfWeightsInBin)) /log(dble(coordBins%bins(:)%nSnapshotsInBin))
 
@@ -228,6 +245,39 @@ module reducedHamiltonian_m
              & coordBins%bins(IndexB)%pmfSE/this%beta, coordBins%bins(IndexB)%reweightingEntropy
       end do
       close(id_target_pmf_file)
+
+! Compute ensemble average
+      write(6,'(1X,A)')'Compute ensemble average or nor? 0. No. 1. Yes'
+      read*,iComputeAvg
+      if(iComputeAvg==1)then
+        allocate(properties(totalNumSnapshots))
+        allocate(avgProp(coordBins%nbins))
+        allocate(stderrProp(coordBins%nbins))
+        do IndexS = 1, totalNumSnapshots
+          read(104,*)properties(IndexS)
+        end do
+        avgProp = 0.d0
+        do IndexS = 1, totalNumSnapshots
+          IndexB = int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1
+          if(IndexB > coordBins%nbins .or. IndexB < 1) cycle
+          avgProp(IndexB) = avgProp(IndexB) + this%weights(IndexS)*properties(IndexS)
+        end do
+        avgProp = avgProp / max(coordBins%bins(:)%sumOfWeightsInBin,1.D-300)
+
+        stderrProp = 0.d0
+        do IndexS = 1, totalNumSnapshots
+          IndexB = int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1
+          if(IndexB > coordBins%nbins .or. IndexB < 1) cycle
+          stderrProp(IndexB) = stderrProp(IndexB) + this%weights(IndexS)*(properties(IndexS)-avgProp(IndexB))**2
+        end do
+        stderrProp(:) = sqrt(stderrProp(:)/coordBins%bins(:)%sumOfWeightsInBin)
+        do IndexB = 1, nbins
+          write(105,'(3F10.5)')coordBins%bins(IndexB)%bincenter, avgProp(IndexB), stderrProp(IndexB)
+        end do
+        deallocate(properties)
+        deallocate(avgProp)
+        deallocate(stderrProp)
+      end if
       deallocate(extWeights)
       deallocate(extNSnapshotsInSimulation)
       deallocate(extCovFreeEnergies)
@@ -299,8 +349,9 @@ module reducedHamiltonian_m
         pmf(IndexB) = sum(pmfResampled(IndexB,:))/nresamples
         pmfSE(IndexB) = sqrt(sum((pmfResampled(IndexB,:)-pmf(IndexB))**2)/nresamples)
       end do
-!      pmf = pmf - pmf(1)
-      pmf = pmf - minval(pmf(:))
+      pmf = pmf - pmf(1)
+!      pmf = pmf - minval(pmf(:))
+!      pmf = pmf - pmf(coordBins%nbins)
 
       write(6,'(1X,A)')'Potential of mean force under the target Hamiltonian from bootstrapping (kcal/mol)'
       write(6,'(1X,A)')'    RC       f        df'
