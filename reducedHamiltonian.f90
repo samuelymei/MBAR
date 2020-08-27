@@ -446,7 +446,8 @@ module reducedHamiltonian_m
          & energyBins%bins(:)%sumOfWeightsInBin / sum(energyBins%bins(:)%sumOfWeightsInBin)
 
       call Weighted_Mean_and_StandardDev(n, weights, energies, meanE, sigmaE)
-      write(*,'(A,1X,E20.10,1X,A,1X,E20.10)')'Fitted Gaussian mean=', meanE, 'sigma=', sigmaE
+      write(*,'(A,1X,E13.3,1X,A,1X,E13.3,1X,A,1X,E13.3,A)')'Fitted Gaussian mean=', meanE, 'sigma=', sigmaE, &
+         & 'G(CE)=', meanE - sigmaE**2/2, 'kT'
 
       forall(IndexB = 1:energyBins%nbins) gaussianCumulative(IndexB) = &
          &   cumulative_gaussian(meanE, sigmaE, & 
