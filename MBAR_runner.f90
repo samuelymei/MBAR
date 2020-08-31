@@ -1,4 +1,4 @@
-program MBAR_caller
+program MBAR_runner
   use MBAR_m
   use io_m
   use bin_m
@@ -191,4 +191,4 @@ program MBAR_caller
   if(allocated(freeEnergies))deallocate(freeEnergies)
   if(allocated(targetReducedEnergies))deallocate(targetReducedEnergies)
   if(allocated(weights))deallocate(weights)
-end program MBAR_caller
+end program MBAR_runner
