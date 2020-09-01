@@ -145,7 +145,7 @@ module reducedHamiltonian_m
       call coordBins%initbins(binmin, binmax, nbins)
 
       allocate(extWeights(totalNumSnapshots,nSimulations+coordBins%nbins))
-      allocate(extCovFreeEnergies(nSimulations+nbins,nSimulations+coordBins%nbins))
+      allocate(extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+coordBins%nbins))
       allocate(extNSnapshotsInSimulation(nSimulations+coordBins%nbins))
       allocate(weights4smoothing(totalNumSnapshots))
       allocate(samplesInThisBin(totalNumSnapshots))
