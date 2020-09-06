@@ -25,8 +25,8 @@ module reducedHamiltonian_m
       procedure :: bootstrap
   end type reducedHamiltonian_t
 
-  type (reducedHamiltonian_t), allocatable, public, target :: simulatedReducedHamiltonian(:)
-  type (reducedHamiltonian_t), public, target :: targetReducedHamiltonian
+  type (reducedHamiltonian_t), allocatable, public :: simulatedReducedHamiltonian(:)
+  type (reducedHamiltonian_t), public :: targetReducedHamiltonian
 
 
   public :: reducedHamiltonian_t

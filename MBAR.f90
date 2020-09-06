@@ -31,7 +31,6 @@ module MBAR_m
       integer(kind=4) :: Iteration
       integer(kind=4) :: IndexW, IndexS
       integer(kind=4) :: JndexW, JndexS
-      integer(kind=4) :: KndexW
 
       real(kind=fp_kind) :: freeEnergyRmsd
       real(kind=fp_kind), allocatable :: jacobian(:,:), residual(:)
@@ -83,11 +82,8 @@ module MBAR_m
           forall(IndexW = 1 : nSimulations, JndexS = 1 : totalNumSnapshots) &
              & weights(JndexS,IndexW) = numerator(JndexS,IndexW)/denominator(JndexS)
          
-          forall (IndexW=1:nSimulations) residual(IndexW) = 1.0d0 - sum(weights(:,IndexW))
+          forall (IndexW = 1 : nSimulations) residual(IndexW) = 1.0d0 - sum(weights(:,IndexW))
   
-!          if(Iteration==0)write(6,'(1X,A,I6,A,ES12.5)')'Iteration: ', Iteration, & 
-!               & ', sum of |residual|: ', sum(abs(residual))
- 
           Iteration = Iteration + 1
  
           forall(IndexW = 1 : nSimulations, JndexW = 1 : nSimulations) jacobian(IndexW, JndexW) = &
@@ -186,7 +182,6 @@ module MBAR_m
       real(kind=fp_kind) :: extCovFreeEnergies(nSimulations+1,nSimulations+1)
       integer(kind=4) :: IndexS, IndexW
       integer(kind=4) :: JndexS, JndexW
-      integer(kind=4) :: KndexS, KndexW
 
       if(idebug == 1) write(6,*) 'Entering MBAR_weight'
       forall (JndexS = 1: totalNumSnapshots) weights(JndexS,nSimulations+1) = &
