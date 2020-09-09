@@ -142,6 +142,8 @@ module reducedHamiltonian_m
       integer(kind=4) :: IndexW, IndexS, IndexB
       integer(kind=4) :: JndexS
      
+      if(idebug == 1) write(6,*) 'Entering computePMF'
+
       call coordBins%initbins(binmin, binmax, nbins)
 
       allocate(extWeights(totalNumSnapshots,nSimulations+coordBins%nbins))
@@ -313,6 +315,8 @@ module reducedHamiltonian_m
 
       integer(kind=4) :: IndexB, IndexS, IndexR
       integer(kind=4) :: JndexS
+
+      if(idebug == 1) write(6,*) 'Entering bootstrap'
 
       allocate(accumulatedWeights(this%TotalNumSnapshots))
       allocate(idBinOrigin(this%TotalNumSnapshots))
