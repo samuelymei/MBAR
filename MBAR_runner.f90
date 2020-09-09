@@ -110,11 +110,11 @@ program MBAR_runner
   end do
   write(6,'(A)') 'Mobley overlap matrix:'
   do IndexW = 1, nSimulations
-    write(6,'(100F8.3)') overlap(IndexW,:)
+    write(6,'(10F8.3)') overlap(IndexW,:)
   end do
   write(6,'(A)') 'Cross correlation between simulations:'
   do IndexW = 1, nSimulations
-    write(6,'(100F8.3)') crossCorr(IndexW,:)
+    write(6,'(10F8.3)') crossCorr(IndexW,:)
   end do
   deallocate(weights)
   deallocate(covFreeEnergies)
@@ -160,11 +160,11 @@ program MBAR_runner
   end do
   write(6,'(A)') 'Mobley overlap between the target Hamiltonian and the simulated Hamiltonian'
   do IndexW = 1, nSimulations
-    write(6,'(F8.3)') overlap(IndexW, 1)
+    write(6,'(10F8.3)') overlap(IndexW, 1)
   end do
   write(6,'(A)') 'Cross correlation between the target Hamiltonian and the simulated Hamiltonian'
   do IndexW = 1, nSimulations
-    write(6,'(F8.3)') crossCorr(IndexW, 1)
+    write(6,'(10F8.3)') crossCorr(IndexW, 1)
   end do
 
   deallocate(weights)
