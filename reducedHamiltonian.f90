@@ -304,7 +304,7 @@ module reducedHamiltonian_m
       real(kind=fp_kind) :: pmf(nbins), pmfSE(nbins)
  
       type (binCollection_t) :: coordBins
-      real(kind=fp_kind), allocatable :: accumulatedWeights(:)
+!      real(kind=fp_kind), allocatable :: accumulatedWeights(:)
       real(kind=fp_kind), allocatable :: pmfResampled(:,:)
       real(kind=fp_kind), allocatable :: weightsResampled(:,:)
       integer(kind=4), allocatable :: idBinOrigin(:)
@@ -314,35 +314,36 @@ module reducedHamiltonian_m
       integer(kind=4) :: irand
 
       integer(kind=4) :: IndexB, IndexS, IndexR
-      integer(kind=4) :: JndexS
+!      integer(kind=4) :: JndexS
 
       if(idebug == 1) write(6,*) 'Entering bootstrap'
 
-      allocate(accumulatedWeights(this%TotalNumSnapshots))
+!      allocate(accumulatedWeights(this%TotalNumSnapshots))
       allocate(idBinOrigin(this%TotalNumSnapshots))
       allocate(idBinResampled(this%TotalNumSnapshots,nresamples))
       allocate(weightsResampled(this%TotalNumSnapshots,nresamples))
       allocate(pmfResampled(nbins,nresamples))
 
-      forall(IndexS = 1 : this%TotalNumSnapshots) accumulatedWeights(IndexS) = sum(this%weights(1:IndexS))
-      accumulatedWeights(this%TotalNumSnapshots) = 1.d0
+!      forall(IndexS = 1 : this%TotalNumSnapshots) accumulatedWeights(IndexS) = sum(this%weights(1:IndexS))
+!      accumulatedWeights(this%TotalNumSnapshots) = 1.d0
 
       call coordBins%initbins(binmin, binmax, nbins)
-!      forall(IndexB = 1 : nbins) coordBins%bins(IndexB)%bincenter = binmin + (IndexB-0.5)*binwidth
       forall(IndexS = 1 : this%TotalNumSnapshots) &
          & idBinOrigin(IndexS) = int((this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1
 
       pmfResampled = 0.d0
       do IndexR = 1, nresamples
-        write(6,'(1X,A,I5)')'Bootstrapping cycle:',IndexR
+        write(6,'(1X,A,I5)') 'Bootstrapping cycle:', IndexR
         do IndexS = 1, this%TotalNumSnapshots
           rand = MyUniformRand()
           irand = rand*this%TotalNumSnapshots + 1
-          do JndexS = 1, this%TotalNumSnapshots
-            if(accumulatedWeights(JndexS) >= rand)exit
-          end do
+!          do JndexS = 1, this%TotalNumSnapshots
+!            if ( accumulatedWeights(JndexS) >= rand ) exit
+!          end do
           idBinResampled(IndexS,IndexR) = idBinOrigin(irand)
           weightsResampled(IndexS,IndexR) = this%weights(irand)
+!          idBinResampled(IndexS,IndexR) = idBinOrigin(JndexS)
+!          weightsResampled(IndexS,IndexR) = this%weights(JndexS)
         end do
         do IndexS = 1, this%TotalNumSnapshots
           if(idBinResampled(IndexS,IndexR) >= 1 .and. idBinResampled(IndexS,IndexR) <= coordBins%nbins)then
@@ -368,7 +369,7 @@ module reducedHamiltonian_m
         write(6,'(F8.3,2F9.3)')coordBins%bins(IndexB)%bincenter, pmf(IndexB)/targetReducedHamiltonian%beta, &
             & pmfSE(IndexB)/targetReducedHamiltonian%beta
       end do
-      deallocate(accumulatedWeights)
+!      deallocate(accumulatedWeights)
       deallocate(idBinOrigin)
       deallocate(idBinResampled)
       deallocate(weightsResampled)
@@ -471,10 +472,6 @@ module reducedHamiltonian_m
                & gaussianCumulative(IndexB),&
 !               & energyBins%bins(IndexB)%sumOfWeightsInBin * exp(-energyBins%bins(IndexB)%bincenter), &
                & gaussianCumulative(IndexB) * exp(-energyBins%bins(IndexB)%bincenter)
-         end do
-         do IndexS = 1, n
-           if(sampleInBin(IndexS) /= 1)cycle
-           write(100,*)IndexS,energies(IndexS)
          end do
       end if
 

@@ -159,13 +159,9 @@ program MBAR_runner
         & simulatedReducedHamiltonian(IndexW)%weights, targetReducedHamiltonian%weights)
   end do
   write(6,'(A)') 'Mobley overlap between the target Hamiltonian and the simulated Hamiltonian'
-  do IndexW = 1, nSimulations
-    write(6,'(10F8.3)') overlap(IndexW, 1)
-  end do
+  write(6,'(10F8.3)') overlap(:, 1)
   write(6,'(A)') 'Cross correlation between the target Hamiltonian and the simulated Hamiltonian'
-  do IndexW = 1, nSimulations
-    write(6,'(10F8.3)') crossCorr(IndexW, 1)
-  end do
+  write(6,'(10F8.3)') crossCorr(:, 1)
 
   deallocate(weights)
   deallocate(nSnapshotsInSimulation)
