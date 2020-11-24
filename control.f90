@@ -8,7 +8,7 @@ module control_m
   integer(Kind=4) :: nSimulations
   real(kind=fp_kind) :: targetBeta=1.d0/(298*kB)
   integer(kind=4) :: iperiodic
-  real(kind=fp_kind) :: period
+  real(kind=fp_kind) :: period=0.d0
   integer(kind=4) :: nbins
   real(kind=fp_kind) :: binmin, binmax
   integer(kind=4) :: iGaussSmooth
