@@ -9,9 +9,9 @@ LIBS = -L$(MKL_HOME)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -l
 
 EXE = MBAR.x
 
-MODULES = constant_m.mod precision_m.mod random_m.mod io_m.mod bin_m.mod snapshot_m.mod simulation_m.mod reducedhamiltonian_m.mod mbar_m.mod
+MODULES = constant_m.mod precision_m.mod random_m.mod io_m.mod control_m.mod bin_m.mod snapshot_m.mod simulation_m.mod reducedhamiltonian_m.mod mbar_m.mod
 
-OBJS = precision_m.o constant.o lib.o random.o io.o bin.o snapshot.o simulation.o MBAR.o reducedHamiltonian.o MBAR_runner.o 
+OBJS = precision_m.o constant.o lib.o random.o io.o control.o bin.o snapshot.o simulation.o MBAR.o reducedHamiltonian.o MBAR_runner.o 
 
 all:	${EXE}
 

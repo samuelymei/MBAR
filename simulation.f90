@@ -1,10 +1,10 @@
 module simulation_m
   use precision_m
   use constant_m
-  use io_m
+  use control_m
   use snapshot_m
   private
-  integer(kind=4), public :: nSimulations, totalNumSnapshots
+  integer(kind=4), public :: totalNumSnapshots
 
   type :: simulation_t
     real(kind=fp_kind) :: beta = 1.d0/(kB*298.0)  ! inverse temperature of this simulation

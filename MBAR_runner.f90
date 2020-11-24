@@ -1,17 +1,12 @@
 program MBAR_runner
   use MBAR_m
+  use control_m
   use io_m
   use bin_m
   use simulation_m
   use reducedHamiltonian_m
   implicit none
   
-  real(kind=fp_kind) :: targetBeta=1.d0/(298*kB)
-
-  integer(kind=4) :: nbins
-  real(kind=fp_kind) :: binmin, binmax
-  integer(kind=4) :: iGaussSmooth
-
   real(kind=fp_kind), allocatable :: reducedEnergies(:,:)
   real(kind=fp_kind), allocatable :: freeEnergies(:)
   real(kind=fp_kind), allocatable :: targetReducedEnergies(:)
@@ -26,25 +21,7 @@ program MBAR_runner
   integer(kind=4) :: IndexW, IndexS, IndexB
   integer(kind=4) :: JndexW, JndexS
 
-  write(6,'(1X,A)')'Number of simulations:'
-  read*,nSimulations
-  write(6,'(1X,A)')'Name of the meta file:'
-  read*,metaFile
-  write(6,'(1X,A)')'Number of bins for output:'
-  read*,nbins
-  write(6,'(1X,A)')'Minimum and maximum of the bins:'
-  read*,binmin,binmax
-  write(6,'(1X,A)')'Target temperature:'
-  read*,targetBeta
-  targetBeta = 1.d0/ (targetBeta*kB)
-  write(6,'(1X,A)')'Name of the file containing the energies of the target Hamiltonian:'
-  read*,targetHamiltonianEnergyFile
-  write(6,'(1X,A)')'Name of the out file containing the PMF of the target Hamiltonian:'
-  read*,targetHamiltonianPmfFile
-  write(6,'(1X,A)')'Name of the out file containing the weights of the target Hamiltonian:'
-  read*, targetWeightsFile
-  write(6,'(1X,A)')'Perform Gaussian smoothing on the data? 0: No. 1: Yes.'
-  read*,iGaussSmooth
+  call controlInitialize()
 
   open( id_meta_file, file = trim(metaFile), status = 'old')
   call readSimulationInfo()

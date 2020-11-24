@@ -1,7 +1,7 @@
 module reducedHamiltonian_m
   use precision_m
   use constant_m
-  use io_m
+  use control_m
   use snapshot_m
   use simulation_m
   implicit none
@@ -35,15 +35,6 @@ module reducedHamiltonian_m
   public :: crossCorrelationBetweenHs
   
   contains
-!    function constructor(beta,TotalNumSnapshots,nOwnSnapshots)
-!      implicit none
-!      type (reducedHamiltonian_t) :: constructor
-!      real(kind=fp_kind), intent(in) :: beta
-!      integer(kind=4), intent(in) :: TotalNumSnapshots
-!      integer(kind=4), intent(in) :: nOwnSnapshots
-!      call constructor%init(beta,TotalNumSnapshots,nOwnSnapshots)
-!    end function constructor
-
     subroutine init(this,beta,TotalNumSnapshots,nOwnSnapshots)
       class(reducedHamiltonian_t) :: this
       real(kind=fp_kind), intent(in) :: beta
@@ -66,6 +57,8 @@ module reducedHamiltonian_m
       logical :: crdonly=.false.
       integer(kind=4) :: indexW, indexS
       integer(kind=4) :: jndexS
+      real(kind=fp_kind) :: periodicDiff(3)
+
       if(idebug == 1) write(*,*) 'Entering reducedHamiltonian%processTrajectories'
 
       if(present(coordonly))crdonly=coordonly
@@ -76,10 +69,15 @@ module reducedHamiltonian_m
           this%snapshots(jndexS)%coordinate = &
                & simulations(indexW)%snapshots(indexS)%coordinate
           if(.not.crdonly)then
+            periodicDiff = this%snapshots(jndexS)%coordinate - this%ownSimulation%restraintCenter
+            periodicDiff(1) = periodicDiff(1) - period
+            periodicDiff(3) = periodicDiff(3) + period
+            periodicDiff = abs( periodicDiff )
             this%reducedEnergies(jndexS) = &
                  & simulations(indexW)%snapshots(indexS)%energyUnbiased &
                  & + 0.5*this%ownSimulation%restraintStrength &
-                 & * (this%snapshots(jndexS)%coordinate - this%ownSimulation%restraintCenter)**2
+!                 & * (this%snapshots(jndexS)%coordinate - this%ownSimulation%restraintCenter)**2
+                 & * minval(periodicDiff)**2
             this%reducedEnergies(jndexS) = this%reducedEnergies(jndexS) * this%beta
           end if
         end do
@@ -125,7 +123,7 @@ module reducedHamiltonian_m
       real(kind=fp_kind), allocatable :: extWeights(:,:)
       real(kind=fp_kind), allocatable :: extCovFreeEnergies(:,:)
       integer(kind=4), allocatable :: extNSnapshotsInSimulation(:)
-      real(kind=fp_kind), allocatable :: weights4smoothing(:)
+      real(kind=fp_kind), allocatable :: densityOfStates(:)
       integer(kind=4), allocatable :: samplesInThisBin(:)
 
       real(kind=fp_kind), allocatable :: properties(:)
@@ -149,7 +147,7 @@ module reducedHamiltonian_m
       allocate(extWeights(totalNumSnapshots,nSimulations+coordBins%nbins))
       allocate(extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+coordBins%nbins))
       allocate(extNSnapshotsInSimulation(nSimulations+coordBins%nbins))
-      allocate(weights4smoothing(totalNumSnapshots))
+      allocate(densityOfStates(totalNumSnapshots))
       allocate(samplesInThisBin(totalNumSnapshots))
       extWeights = 0.d0
       forall(IndexW = 1 : nSimulations)extWeights(:, IndexW) = simulatedReducedHamiltonian(IndexW)%weights(:)
@@ -164,25 +162,26 @@ module reducedHamiltonian_m
       if(present(iGaussSmooth) .and. iGaussSmooth > 0) then
         write(6,'(A)')'Perform Gaussian smoothing on the energy distribution in each bin'
         do IndexB = 1, coordBins%nbins
-          weights4smoothing = 0.d0
+          densityOfStates = 0.d0
           samplesInThisBin = 0
           do IndexS = 1, totalNumSnapshots
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
-            weights4smoothing(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
+            densityOfStates(IndexS) = this%weights(IndexS)/exp(-this%reducedEnergies(IndexS))
             samplesInThisBin(IndexS) = 1
           end do
-          write(6,'(1X,A,I3,A,I)')'Number of samples in Bin', IndexB,' :', sum(samplesInThisBin)
+          write(6,'(1X,A,I5,A,I)')'Number of samples in Bin ', IndexB,' :', sum(samplesInThisBin)
 
           iDumpHistogram = 1
+!          if ( IndexB == 3 ) iDumpHistogram = 1
           write(fileEnergyDistribution,*)IndexB
           fileEnergyDistribution = 'energy_distribution_bin'//trim(adjustl(fileEnergyDistribution))//'.dat'
           open(101,file=fileEnergyDistribution)
-          call GaussianSmoothing(totalNumSnapshots,samplesInThisBin,this%reducedEnergies,weights4smoothing,iDumpHistogram)
+          call GaussianSmoothing(totalNumSnapshots,samplesInThisBin,this%reducedEnergies,densityOfStates,iDumpHistogram)
           close(101)
 
           do IndexS = 1, totalNumSnapshots
             if(int(( this%snapshots(IndexS)%coordinate - coordBins%binmin )/coordBins%binwidth) + 1 /= IndexB) cycle
-            this%weights(IndexS) = weights4smoothing(IndexS) * exp(-this%reducedEnergies(IndexS))
+            this%weights(IndexS) = densityOfStates(IndexS) * exp(-this%reducedEnergies(IndexS))
           end do
         end do
       end if
@@ -213,18 +212,18 @@ module reducedHamiltonian_m
       coordBins%bins(:)%pmf = -log(coordBins%bins(:)%pmf)
 
       if(present(iGaussSmooth) .and. iGaussSmooth > 0) then
-       IdxMin = minloc(coordBins%bins(:)%pmf,1)
-       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(IdxMin)%pmf
-       forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
-           & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
-               &  + extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IdxMin) &
-               &  - 2*extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IndexB) )
-
-!       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(coordBins%nbins)%pmf
+!       IdxMin = minloc(coordBins%bins(:)%pmf,1)
+!       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(IdxMin)%pmf
 !       forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
 !           & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
-!               &  + extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+coordBins%nbins) &
-!               &  - 2*extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+IndexB) )
+!               &  + extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IdxMin) &
+!               &  - 2*extCovFreeEnergies(nSimulations+IdxMin,nSimulations+IndexB) )
+
+       coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(coordBins%nbins)%pmf
+       forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
+           & sqrt(  extCovFreeEnergies(nSimulations+IndexB,nSimulations+IndexB) &
+               &  + extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+coordBins%nbins) &
+               &  - 2*extCovFreeEnergies(nSimulations+coordBins%nbins,nSimulations+IndexB) )
 
 !        coordBins%bins(:)%pmf = coordBins%bins(:)%pmf - coordBins%bins(1)%pmf
 !        forall(IndexB = 1 : coordBins%nbins) coordBins%bins(IndexB)%pmfSE = &
@@ -288,7 +287,7 @@ module reducedHamiltonian_m
       deallocate(extWeights)
       deallocate(extNSnapshotsInSimulation)
       deallocate(extCovFreeEnergies)
-      deallocate(weights4smoothing)
+      deallocate(densityOfStates)
       deallocate(samplesInThisBin)
       call coordBins%deleteBinInfo()
     end subroutine computePMF
@@ -404,13 +403,13 @@ module reducedHamiltonian_m
       cc = cross_correlation(n,workWeights1,workWeights2)
     end function crossCorrelationBetweenHs
 
-    subroutine GaussianSmoothing(n,sampleInBin,energies,weights,iDumpHistogram)
+    subroutine GaussianSmoothing(n,sampleInBin,energies,densityOfStates,iDumpHistogram)
       use bin_m
       implicit none
       integer(kind=4), intent(in) :: n
       integer(kind=4), intent(in) :: sampleInBin(n)
       real(kind=fp_kind), intent(in) :: energies(n)
-      real(kind=fp_kind), intent(in out) :: weights(n)
+      real(kind=fp_kind), intent(in out) :: densityOfStates(n)
       integer(kind=4), intent(in) :: iDumpHistogram
 
       type (binCollection_t) :: energyBins
@@ -433,8 +432,6 @@ module reducedHamiltonian_m
         end if
       end do
 
-!      minE = minval(energies(:))-1.0E-10
-!      maxE = maxval(energies(:))+1.0E-10
       minE = minval(energiesInBin(:))-1.0E-10
       maxE = maxval(energiesInBin(:))+1.0E-10
       width = 0.2d0
@@ -443,19 +440,19 @@ module reducedHamiltonian_m
       allocate(scaleFactor(energyBins%nbins))
       allocate(gaussianCumulative(energyBins%nbins))
 
-! compute histogram from fractional weights
+! compute histogram from fractional densityOfStates
       energyBins%bins(:)%sumOfWeightsInBin = 0.d0
       do IndexS = 1, n
         if(sampleInBin(IndexS) /= 1)cycle
         binID(IndexS) = int(( energies(IndexS) - energyBins%binmin )/energyBins%binwidth) + 1
         energyBins%bins(binID(IndexS))%sumOfWeightsInBin = energyBins%bins(binID(IndexS))%sumOfWeightsInBin &
-           & + weights(IndexS)
+           & + densityOfStates(IndexS)
       end do
 ! normalization, because cumulative_gaussian is normalized
       energyBins%bins(:)%sumOfWeightsInBin = &
          & energyBins%bins(:)%sumOfWeightsInBin / sum(energyBins%bins(:)%sumOfWeightsInBin)
 
-      call Weighted_Mean_and_StandardDev(n, weights, energies, meanE, sigmaE)
+      call Weighted_Mean_and_StandardDev(n, densityOfStates, energies, meanE, sigmaE)
       write(*,'(A,1X,E13.3,1X,A,1X,E13.3,1X,A,1X,E13.3,A)')'Fitted Gaussian mean=', meanE, 'sigma=', sigmaE, &
          & 'G(CE)=', meanE - sigmaE**2/2, '  kT'
 
@@ -467,11 +464,13 @@ module reducedHamiltonian_m
 
       if(iDumpHistogram==1) then
          do IndexB = 1, energyBins%nbins
-            write(101,'(F10.6,4E20.10)')energyBins%bins(IndexB)%bincenter, &
+            write(101,'(F10.6,2E20.10)')energyBins%bins(IndexB)%bincenter, &
                & energyBins%bins(IndexB)%sumOfWeightsInBin, &
-               & gaussianCumulative(IndexB),&
+               & gaussianCumulative(IndexB)
 !               & energyBins%bins(IndexB)%sumOfWeightsInBin * exp(-energyBins%bins(IndexB)%bincenter), &
-               & gaussianCumulative(IndexB) * exp(-energyBins%bins(IndexB)%bincenter)
+!               & gaussianCumulative(IndexB) * exp(-energyBins%bins(IndexB)%bincenter)
+!               & energyBins%bins(IndexB)%sumOfWeightsInBin * &
+!               & gaussianCumulative(IndexB) / energyBins%bins(IndexB)%sumOfWeightsInBin
          end do
       end if
 
@@ -484,8 +483,31 @@ module reducedHamiltonian_m
 
       do IndexS = 1, n
         if(sampleInBin(IndexS) /= 1)cycle
-        weights(IndexS) = weights(IndexS) * scaleFactor(binID(IndexS))
+        densityOfStates(IndexS) = densityOfStates(IndexS) * scaleFactor(binID(IndexS))
       end do
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      energyBins%bins(:)%sumOfWeightsInBin = 0.d0
+      do IndexS = 1, n
+        if(sampleInBin(IndexS) /= 1)cycle
+        binID(IndexS) = int(( energies(IndexS) - energyBins%binmin )/energyBins%binwidth) + 1
+        energyBins%bins(binID(IndexS))%sumOfWeightsInBin = energyBins%bins(binID(IndexS))%sumOfWeightsInBin &
+           & + densityOfStates(IndexS)
+      end do
+      energyBins%bins(:)%sumOfWeightsInBin = &
+         & energyBins%bins(:)%sumOfWeightsInBin / sum(energyBins%bins(:)%sumOfWeightsInBin)
+
+      if(iDumpHistogram==1) then
+         do IndexB = 1, energyBins%nbins
+            write(102,'(F10.6,4E20.10)')energyBins%bins(IndexB)%bincenter, &
+               & energyBins%bins(IndexB)%sumOfWeightsInBin, &
+               & gaussianCumulative(IndexB),&
+               & energyBins%bins(IndexB)%sumOfWeightsInBin
+         end do
+      end if
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       call energyBins%deleteBinInfo()
       deallocate(binID)

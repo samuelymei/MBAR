@@ -1,7 +1,7 @@
 module MBAR_m
   use precision_m
   use constant_m
-  use io_m
+  use control_m
   implicit none
   
   contains
