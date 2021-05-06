@@ -86,7 +86,7 @@ module MBAR_m
   
           Iteration = Iteration + 1
  
-          forall ( JndexW = 1 : nSimulations, IndexW = 1 : nSimulations ) jacobian(JndexW, IndexW) = &
+          forall ( JndexW = 1 : nSimulations, IndexW = 1 : nSimulations ) jacobian(IndexW, JndexW) = &
               & sum(numerator(:,IndexW) * nSnapshotsInSimulation(JndexW) * &
               &     numerator(:,JndexW)/denominator(:)**2) 
           forall ( IndexW = 1 : nSimulations ) jacobian(IndexW,IndexW) = &
